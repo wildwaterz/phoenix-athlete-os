@@ -88,9 +88,11 @@ export interface PhoenixState {
     workload: string;
     reason: string;
     nextReassessment: string;
+    confidence: "High" | "Medium" | "Low";
   };
   athleteName: string;
   surgeryDate: string; // ISO yyyy-mm-dd
+  campaignName: string;
 }
 
 // ---------- seed ----------
@@ -277,8 +279,9 @@ const seedMorningHistory: MorningCheckIn[] = [
 ];
 
 const initial: PhoenixState = {
-  athleteName: "Athlete",
+  athleteName: "Kevin",
   surgeryDate: "2026-06-25",
+  campaignName: "ACL Revision Prehab",
   currentMissionId: "wake-the-quad",
   recoveryIqXp: 1240,
   morning: {
@@ -305,6 +308,7 @@ const initial: PhoenixState = {
     workload: "Hold yesterday's volume. Add 3× terminal knee extension holds.",
     reason: "Activation is consolidating (4/5 for 4 days). Swelling stable at 1/10.",
     nextReassessment: "48h — extension and morning swelling.",
+    confidence: "Medium",
   },
 };
 
