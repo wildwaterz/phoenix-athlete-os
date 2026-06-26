@@ -81,10 +81,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "The Athlete OS for recovery, training, and long-term performance. Evidence over ego." },
       { name: "author", content: "Project Phoenix" },
       { property: "og:title", content: "Phoenix OS — Athlete Operating System" },
-      { property: "og:description", content: "Recovery, training, and performance — organized by mission, milestone, and evidence." },
+      { property: "og:description", content: "The Athlete OS for recovery, training, and long-term performance. Evidence over ego." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Phoenix OS — Athlete Operating System" },
+      { name: "twitter:description", content: "The Athlete OS for recovery, training, and long-term performance. Evidence over ego." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/0a59c1fa-6775-49a1-a950-116e0eca196c/id-preview-4c1e7aaa--afc2682e-0561-4c1c-bd62-ed7a77bb40a8.lovable.app-1782441126703.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/0a59c1fa-6775-49a1-a950-116e0eca196c/id-preview-4c1e7aaa--afc2682e-0561-4c1c-bd62-ed7a77bb40a8.lovable.app-1782441126703.png" },
     ],
     links: [
       {
