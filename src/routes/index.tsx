@@ -19,7 +19,7 @@ import {
   levelFromXp,
   missionMilestoneProgress,
   previousMorning,
-  readinessFor,
+  readinessForDate,
   setState,
   todaysWin,
   trendFor,
@@ -78,7 +78,7 @@ function Dashboard() {
   const m = getMorningForDate(s, selectedDate);
   const evening = getEveningForDate(s, selectedDate);
   const prev = previousMorning(s, selectedDate);
-  const readiness = readinessFor(m);
+  const readiness = readinessForDate(s, selectedDate);
   const isToday = selectedDate === todayIso;
 
   const shiftDate = (delta: number) => {

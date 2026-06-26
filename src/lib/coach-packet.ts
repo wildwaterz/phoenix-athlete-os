@@ -15,7 +15,7 @@ import {
   levelFromXp,
   previousEvening,
   previousMorning,
-  readinessFor,
+  readinessForDate,
   smallWinForDate,
   todayIso,
 } from "./phoenix-data";
@@ -37,7 +37,7 @@ export function buildPacketJson(
   const evening = getEveningForDate(s, isoDate);
   const previous = previousMorning(s, isoDate);
   const previousResponse = previousEvening(s, isoDate);
-  const readiness = readinessFor(morning);
+  const readiness = readinessForDate(s, isoDate);
   const lastJournal = s.journal[0];
   const dailyQuests = dailyQuestsForDate(s, isoDate);
   const dailyCoachPlan = dailyCoachPlanForDate(s, isoDate);
@@ -118,7 +118,7 @@ export function buildPacketMarkdown(
   const e = getEveningForDate(s, isoDate);
   const previous = previousMorning(s, isoDate);
   const previousResponse = previousEvening(s, isoDate);
-  const readiness = readinessFor(m);
+  const readiness = readinessForDate(s, isoDate);
   const dailyCoachPlan = dailyCoachPlanForDate(s, isoDate);
   const smallWin = smallWinForDate(s, isoDate);
   const dailyQuests = dailyQuestsForDate(s, isoDate);

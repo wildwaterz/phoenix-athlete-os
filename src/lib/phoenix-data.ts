@@ -1738,7 +1738,7 @@ function postOpDefaultQuests(day: 0 | 1): QuestDraft[] {
 
 function previousEveningWasReactive(e: EveningCheckIn | null): boolean {
   if (!e) return false;
-  return e.painAfter >= 5 || e.swellingChange > 0 || e.walkingConfidence <= 2;
+  return e.painAfter >= 5 || e.swellingChange >= 2 || e.walkingConfidence <= 2;
 }
 
 function previousEveningWasStable(e: EveningCheckIn | null): boolean {
@@ -2153,8 +2153,7 @@ export function dailyCoachPlanForDate(s: PhoenixState, isoDate = todayIso()): Da
 
   const phase = currentPhase(s);
   const missions = activeMissions(s);
-  const morning = getMorningForDate(s, isoDate);
-  const readiness = readinessFor(morning);
+  const readiness = readinessForDate(s, isoDate);
   const rec = s.todayRecommendation;
 
   return {
@@ -2620,7 +2619,87 @@ export type Readiness = {
   summary: string;
 };
 
-export function readinessFor(m: MorningCheckIn | null): Readiness {
+type ReadinessContext = {
+  recoveryDay?: number;
+  previousMorning?: MorningCheckIn | null;
+  previousEvening?: EveningCheckIn | null;
+};
+
+function normalizedSwellingLevel(m: MorningCheckIn): number {
+  return m.swellingLevel ?? m.swelling;
+}
+
+function derivedSwellingTrend(
+  current: MorningCheckIn,
+  previous: MorningCheckIn | null,
+): SwellingTrend {
+  if (current.swellingTrend) return current.swellingTrend;
+  if (!previous) return "unknown";
+
+  const delta = normalizedSwellingLevel(current) - normalizedSwellingLevel(previous);
+  if (delta >= 1) return "worse";
+  if (delta <= -1) return "improved";
+  return "stable";
+}
+
+function swellingIncrease(current: MorningCheckIn, previous: MorningCheckIn | null): number {
+  if (!previous) return 0;
+  return normalizedSwellingLevel(current) - normalizedSwellingLevel(previous);
+}
+
+function hasConcerningNotes(notes: string): boolean {
+  const normalized = notes.toLowerCase();
+  return [
+    "fever",
+    "redness",
+    "hot",
+    "heat",
+    "drainage",
+    "calf",
+    "shortness of breath",
+    "instability",
+    "buckling",
+    "sharp",
+    "worse",
+  ].some((term) => normalized.includes(term));
+}
+
+function activityInducedSwellingResponse(
+  current: MorningCheckIn,
+  previousMorningEntry: MorningCheckIn | null,
+  previousEveningEntry: EveningCheckIn | null,
+): boolean {
+  const context = current.swellingContext ?? "unknown";
+  if (context === "activity_response") return true;
+  if ((previousEveningEntry?.swellingChange ?? 0) >= 2) return true;
+  return swellingIncrease(current, previousMorningEntry) >= 2;
+}
+
+function swellingPairedWithNegativeSignals(
+  current: MorningCheckIn,
+  previousMorningEntry: MorningCheckIn | null,
+  previousEveningEntry: EveningCheckIn | null,
+): boolean {
+  const painIncrease = previousMorningEntry ? current.pain - previousMorningEntry.pain : 0;
+  const walkingConfidenceDrop = previousMorningEntry
+    ? previousMorningEntry.walkingConfidence - current.walkingConfidence
+    : 0;
+  const movementQualityLow =
+    (current.movementQuality != null && current.movementQuality <= 2) ||
+    (previousEveningEntry?.movementQualityAfter != null &&
+      previousEveningEntry.movementQualityAfter <= 2);
+
+  return (
+    painIncrease >= 2 ||
+    current.pain >= 4 ||
+    walkingConfidenceDrop >= 1 ||
+    current.walkingConfidence <= 2 ||
+    movementQualityLow ||
+    hasConcerningNotes(current.notes)
+  );
+}
+
+export function readinessFor(m: MorningCheckIn | null, context: ReadinessContext = {}): Readiness {
   if (!m)
     return {
       state: "modify",
@@ -2628,19 +2707,71 @@ export function readinessFor(m: MorningCheckIn | null): Readiness {
       dot: "🟡",
       summary: "Log a morning check-in to score today's readiness.",
     };
-  if (m.pain >= 5 || m.swelling >= 5)
-    return {
-      state: "recover",
-      label: "Recover",
-      dot: "🔴",
-      summary: "Reactive signal. Prioritize sleep, walking, and nutrition today.",
-    };
-  if (m.pain > 3 || m.swelling >= 3 || m.walkingConfidence <= 2)
+
+  const recoveryDay = context.recoveryDay;
+  const previousMorningEntry = context.previousMorning ?? null;
+  const previousEveningEntry = context.previousEvening ?? null;
+  const swellingLevel = normalizedSwellingLevel(m);
+  const swellingTrend = derivedSwellingTrend(m, previousMorningEntry);
+  const swellingContext = m.swellingContext ?? "unknown";
+  const earlyPostOp = recoveryDay != null && recoveryDay >= 0 && recoveryDay <= 3;
+  const activityResponse = activityInducedSwellingResponse(
+    m,
+    previousMorningEntry,
+    previousEveningEntry,
+  );
+  const pairedNegativeSignals = swellingPairedWithNegativeSignals(
+    m,
+    previousMorningEntry,
+    previousEveningEntry,
+  );
+  const swellingWithNegativeSignals =
+    swellingLevel >= (earlyPostOp ? 4 : 5) && pairedNegativeSignals;
+  const expectedEarlySwelling =
+    earlyPostOp &&
+    swellingLevel >= 4 &&
+    swellingLevel <= 6 &&
+    m.pain <= 3 &&
+    m.walkingConfidence >= 3 &&
+    !activityResponse &&
+    !pairedNegativeSignals &&
+    (swellingContext === "surgical_baseline" ||
+      swellingContext === "unknown" ||
+      swellingTrend === "stable" ||
+      swellingTrend === "unknown");
+
+  if (expectedEarlySwelling) {
     return {
       state: "modify",
       label: "Modify",
       dot: "🟡",
-      summary: "Hold volume. Substitute heavy work for activation and range.",
+      summary:
+        "Expected post-op swelling present. Complete gentle recovery work. Avoid volume increases.",
+    };
+  }
+
+  if (
+    m.pain >= 5 ||
+    activityResponse ||
+    swellingWithNegativeSignals ||
+    (swellingLevel >= 7 && !earlyPostOp)
+  )
+    return {
+      state: "recover",
+      label: "Recover",
+      dot: "🔴",
+      summary:
+        "Reactive swelling response. Reduce workload and prioritize symptom control, easy movement, and reassessment.",
+    };
+
+  if (m.pain > 3 || swellingLevel >= 3 || m.walkingConfidence <= 2)
+    return {
+      state: "modify",
+      label: "Modify",
+      dot: "🟡",
+      summary: earlyPostOp
+        ? "Post-op symptoms are present. Complete gentle recovery work and avoid volume increases."
+        : "Hold volume. Substitute heavy work for activation and range.",
     };
   return {
     state: "ready",
@@ -2648,6 +2779,14 @@ export function readinessFor(m: MorningCheckIn | null): Readiness {
     dot: "🟢",
     summary: "Green light. Proceed with today's planned session.",
   };
+}
+
+export function readinessForDate(s: PhoenixState, isoDate = todayIso()): Readiness {
+  return readinessFor(getMorningForDate(s, isoDate), {
+    recoveryDay: daysPostOp(s, isoDate),
+    previousMorning: previousMorning(s, isoDate),
+    previousEvening: previousEvening(s, isoDate),
+  });
 }
 
 export const PRINCIPLES: { title: string; body: string }[] = [
