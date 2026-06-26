@@ -1,0 +1,19 @@
+{
+  "name": "Phoenix OS",
+  "short_name": "Phoenix",
+  "description": "Athlete operating system for daily recovery and training decisions.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#100c09",
+  "theme_color": "#f97316",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/phoenix-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
