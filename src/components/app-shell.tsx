@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { PHASES, currentPhaseN, usePhoenix } from "@/lib/phoenix-data";
 
 type NavEntry = {
   to: string;
@@ -75,6 +76,8 @@ export function AppShell({ children }: { children?: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (to: string, exact?: boolean) =>
     exact ? pathname === to : pathname === to || pathname.startsWith(to + "/");
+  const state = usePhoenix();
+  const phaseN = currentPhaseN(state);
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground">
@@ -96,6 +99,39 @@ export function AppShell({ children }: { children?: ReactNode }) {
             <NavItem key={n.to} {...n} active={isActive(n.to, n.exact)} />
           ))}
         </nav>
+        <div className="mt-4 rounded-xl border border-border bg-card/40 p-3">
+          <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            Recovery Phase
+          </div>
+          <ol className="space-y-1.5">
+            {PHASES.map((p) => {
+              const done = p.n < phaseN;
+              const active = p.n === phaseN;
+              return (
+                <li key={p.n} className="flex items-center gap-2 text-[11px]">
+                  <span
+                    className={cn(
+                      "grid h-3.5 w-3.5 place-items-center rounded-full border",
+                      active
+                        ? "border-phoenix bg-phoenix shadow-[0_0_10px_var(--color-phoenix-glow)]"
+                        : done
+                          ? "border-success bg-success/70"
+                          : "border-border bg-transparent",
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "truncate",
+                      active ? "font-medium text-foreground" : "text-muted-foreground",
+                    )}
+                  >
+                    Phase {p.n} · {p.name}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
         <div className="mt-4 rounded-xl border border-border bg-card/60 p-3 text-[11px] leading-relaxed text-muted-foreground">
           <div className="mb-1 font-medium text-foreground">Evidence beats ego.</div>
           Tomorrow's response matters more than today's workout.
