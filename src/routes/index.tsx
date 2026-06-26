@@ -123,7 +123,11 @@ function Dashboard() {
 
           <Popover>
             <PopoverTrigger asChild>
-              <button className="flex flex-1 items-center justify-between gap-3 rounded-xl border border-border bg-background/40 px-4 py-2 text-left transition hover:bg-accent/40">
+              <button
+                type="button"
+                aria-label="Change date"
+                className="group flex flex-1 cursor-pointer items-center justify-between gap-3 rounded-xl border border-border bg-background/40 px-4 py-2 text-left transition hover:border-phoenix/60 hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-phoenix/60"
+              >
                 <div className="min-w-0">
                   <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                     {dayOfWeek}
@@ -135,7 +139,11 @@ function Dashboard() {
                   <span className="rounded-md bg-phoenix/10 px-2 py-0.5 text-[11px] font-medium text-phoenix">
                     Day {dayPostOp} Post-Op
                   </span>
-                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  <span className="hidden items-center gap-1 rounded-md border border-border/80 bg-background/60 px-2 py-1 text-[11px] font-medium text-muted-foreground transition group-hover:text-foreground sm:inline-flex">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Change
+                  </span>
+                  <CalendarDays className="h-4 w-4 text-muted-foreground sm:hidden" />
                 </div>
               </button>
             </PopoverTrigger>
