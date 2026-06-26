@@ -9,8 +9,56 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RecoveryIqRouteImport } from './routes/recovery-iq'
+import { Route as PrinciplesRouteImport } from './routes/principles'
+import { Route as MissionsRouteImport } from './routes/missions'
+import { Route as MilestonesRouteImport } from './routes/milestones'
+import { Route as JournalRouteImport } from './routes/journal'
+import { Route as GlossaryRouteImport } from './routes/glossary'
+import { Route as CheckInRouteImport } from './routes/check-in'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecoveryIqRoute = RecoveryIqRouteImport.update({
+  id: '/recovery-iq',
+  path: '/recovery-iq',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrinciplesRoute = PrinciplesRouteImport.update({
+  id: '/principles',
+  path: '/principles',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MissionsRoute = MissionsRouteImport.update({
+  id: '/missions',
+  path: '/missions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MilestonesRoute = MilestonesRouteImport.update({
+  id: '/milestones',
+  path: '/milestones',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JournalRoute = JournalRouteImport.update({
+  id: '/journal',
+  path: '/journal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GlossaryRoute = GlossaryRouteImport.update({
+  id: '/glossary',
+  path: '/glossary',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CheckInRoute = CheckInRouteImport.update({
+  id: '/check-in',
+  path: '/check-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +67,144 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/check-in': typeof CheckInRoute
+  '/glossary': typeof GlossaryRoute
+  '/journal': typeof JournalRoute
+  '/milestones': typeof MilestonesRoute
+  '/missions': typeof MissionsRoute
+  '/principles': typeof PrinciplesRoute
+  '/recovery-iq': typeof RecoveryIqRoute
+  '/settings': typeof SettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/check-in': typeof CheckInRoute
+  '/glossary': typeof GlossaryRoute
+  '/journal': typeof JournalRoute
+  '/milestones': typeof MilestonesRoute
+  '/missions': typeof MissionsRoute
+  '/principles': typeof PrinciplesRoute
+  '/recovery-iq': typeof RecoveryIqRoute
+  '/settings': typeof SettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/check-in': typeof CheckInRoute
+  '/glossary': typeof GlossaryRoute
+  '/journal': typeof JournalRoute
+  '/milestones': typeof MilestonesRoute
+  '/missions': typeof MissionsRoute
+  '/principles': typeof PrinciplesRoute
+  '/recovery-iq': typeof RecoveryIqRoute
+  '/settings': typeof SettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/check-in'
+    | '/glossary'
+    | '/journal'
+    | '/milestones'
+    | '/missions'
+    | '/principles'
+    | '/recovery-iq'
+    | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/check-in'
+    | '/glossary'
+    | '/journal'
+    | '/milestones'
+    | '/missions'
+    | '/principles'
+    | '/recovery-iq'
+    | '/settings'
+  id:
+    | '__root__'
+    | '/'
+    | '/check-in'
+    | '/glossary'
+    | '/journal'
+    | '/milestones'
+    | '/missions'
+    | '/principles'
+    | '/recovery-iq'
+    | '/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CheckInRoute: typeof CheckInRoute
+  GlossaryRoute: typeof GlossaryRoute
+  JournalRoute: typeof JournalRoute
+  MilestonesRoute: typeof MilestonesRoute
+  MissionsRoute: typeof MissionsRoute
+  PrinciplesRoute: typeof PrinciplesRoute
+  RecoveryIqRoute: typeof RecoveryIqRoute
+  SettingsRoute: typeof SettingsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/recovery-iq': {
+      id: '/recovery-iq'
+      path: '/recovery-iq'
+      fullPath: '/recovery-iq'
+      preLoaderRoute: typeof RecoveryIqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/principles': {
+      id: '/principles'
+      path: '/principles'
+      fullPath: '/principles'
+      preLoaderRoute: typeof PrinciplesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/missions': {
+      id: '/missions'
+      path: '/missions'
+      fullPath: '/missions'
+      preLoaderRoute: typeof MissionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/milestones': {
+      id: '/milestones'
+      path: '/milestones'
+      fullPath: '/milestones'
+      preLoaderRoute: typeof MilestonesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/journal': {
+      id: '/journal'
+      path: '/journal'
+      fullPath: '/journal'
+      preLoaderRoute: typeof JournalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/glossary': {
+      id: '/glossary'
+      path: '/glossary'
+      fullPath: '/glossary'
+      preLoaderRoute: typeof GlossaryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/check-in': {
+      id: '/check-in'
+      path: '/check-in'
+      fullPath: '/check-in'
+      preLoaderRoute: typeof CheckInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,17 +217,15 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CheckInRoute: CheckInRoute,
+  GlossaryRoute: GlossaryRoute,
+  JournalRoute: JournalRoute,
+  MilestonesRoute: MilestonesRoute,
+  MissionsRoute: MissionsRoute,
+  PrinciplesRoute: PrinciplesRoute,
+  RecoveryIqRoute: RecoveryIqRoute,
+  SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
