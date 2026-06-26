@@ -278,7 +278,7 @@ const seedMorningHistory: MorningCheckIn[] = [
 
 const initial: PhoenixState = {
   athleteName: "Athlete",
-  surgeryDate: isoDaysAgo(21),
+  surgeryDate: "2026-06-25",
   currentMissionId: "wake-the-quad",
   recoveryIqXp: 1240,
   morning: {
