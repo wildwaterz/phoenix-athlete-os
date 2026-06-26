@@ -450,7 +450,7 @@ export function recoveryStatus(s: PhoenixState): {
   const m = s.morning;
   if (!m) return { label: "Awaiting check-in", tone: "watch" };
   if (m.pain >= 5 || m.swelling >= 5) return { label: "Reactive — back off", tone: "alert" };
-  if (m.pain >= 3 || m.swelling >= 3) return { label: "Watch — hold volume", tone: "watch" };
+  if (m.pain > 3 || m.swelling >= 3) return { label: "Watch — hold volume", tone: "watch" };
   return { label: "Green — proceed as planned", tone: "good" };
 }
 
@@ -555,7 +555,7 @@ export function readinessFor(m: MorningCheckIn | null): Readiness {
       dot: "🔴",
       summary: "Reactive signal. Prioritize sleep, walking, and nutrition today.",
     };
-  if (m.pain >= 3 || m.swelling >= 3 || m.walkingConfidence <= 2)
+  if (m.pain > 3 || m.swelling >= 3 || m.walkingConfidence <= 2)
     return {
       state: "modify",
       label: "Modify",
@@ -666,7 +666,7 @@ export function todaysWin(
         detail: "Inflammation gate is loosening.",
       };
   }
-  if (current.pain <= 2 && current.swelling <= 2)
+  if (current.pain <= 3 && current.swelling <= 2)
     return { label: "Pain remained in the green zone", detail: "Stable baseline held." };
   if (current.swelling <= 2)
     return { label: "Swelling stayed stable", detail: "Maintenance is a win." };

@@ -323,7 +323,7 @@ function Dashboard() {
           current={m?.pain}
           previous={prev?.pain}
           direction="lower-better"
-          tone={m ? (m.pain <= 2 ? "good" : m.pain <= 4 ? "watch" : "alert") : "default"}
+          tone={m ? (m.pain <= 3 ? "good" : m.pain <= 4 ? "watch" : "alert") : "default"}
         />
         <MetricTile
           label="Swelling"
