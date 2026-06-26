@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, PageHeader, Surface } from "@/components/app-shell";
 import { Flame } from "lucide-react";
+import { PRINCIPLES } from "@/lib/phoenix-data";
 
 export const Route = createFileRoute("/principles")({
   head: () => ({
@@ -11,15 +12,6 @@ export const Route = createFileRoute("/principles")({
   }),
   component: PrinciplesPage,
 });
-
-const PRINCIPLES = [
-  { title: "Progression is earned, never assumed.", body: "The calendar does not promote you. Evidence does." },
-  { title: "Recovery is training.", body: "What you do between sessions decides what the next session can be." },
-  { title: "Adaptations matter more than exercises.", body: "The exercise is a stimulus. The adaptation is the point." },
-  { title: "Competency matters more than timelines.", body: "Move when you've earned it — not when the protocol says so." },
-  { title: "Evidence beats ego.", body: "What the data says wins over what you want to be true." },
-  { title: "Tomorrow's response matters more than today's workout.", body: "If today breaks tomorrow, today wasn't a win." },
-];
 
 function PrinciplesPage() {
   return (
