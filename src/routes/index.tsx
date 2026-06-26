@@ -3,6 +3,7 @@ import { AppShell, ProgressBar, StatTile, Surface } from "@/components/app-shell
 import {
   currentMission,
   currentPhaseN,
+  dailyCoachPlanForDate,
   dailyQuestsForDate,
   type DailyQuest,
   daysPostOp,
@@ -80,6 +81,7 @@ function Dashboard() {
   const dayPostOp = daysPostOp(s, selectedDate);
   const principle = principleForPhase(phaseN);
   const win = todaysWin(m, prev);
+  const plan = dailyCoachPlanForDate(s, selectedDate);
   const quests = dailyQuestsForDate(s, selectedDate);
 
   const toggleQuest = (id: string) =>
@@ -110,7 +112,6 @@ function Dashboard() {
 
   const mainQuests = quests.filter((q) => q.kind === "main");
   const sideQuests = quests.filter((q) => q.kind === "side");
-  const rec = s.todayRecommendation;
   const readinessTone =
     readiness.state === "ready" ? "good" : readiness.state === "modify" ? "watch" : "alert";
   const readinessRing =
@@ -430,17 +431,60 @@ function Dashboard() {
 
           <div className="mt-5 rounded-xl border border-phoenix/20 bg-phoenix/5 p-4">
             <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-phoenix">
-              <Sparkles className="h-3.5 w-3.5" /> Coach Recommendation
+              <Sparkles className="h-3.5 w-3.5" /> Daily Coach Plan
             </div>
             <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-              <RecRow label="Today's Priority" value={rec.priority} />
-              <RecRow label="Workload" value={rec.workload} />
-              <RecRow label="Reason" value={rec.reason} />
-              <RecRow label="Next Reassessment" value={rec.nextReassessment} />
-              <RecRow label="Confidence" value={rec.confidence} />
+              <RecRow label="Primary Focus" value={plan.primaryFocus} />
+              <RecRow label="Readiness" value={plan.readiness} />
+              <RecRow label="Workload" value={plan.workload || "Use today's quests."} />
+              <RecRow
+                label="Reason"
+                value={plan.rationale || plan.readinessReason || "Imported coach plan."}
+              />
+              <RecRow
+                label="Next Reassessment"
+                value={
+                  plan.nextReassessment || plan.eveningCheckInFocus.join(", ") || "Evening check-in"
+                }
+              />
+              <RecRow label="Confidence" value={plan.confidence} />
             </dl>
+            {plan.targets.length > 0 && (
+              <div className="mt-4">
+                <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  Targets
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {plan.targets.map((target) => (
+                    <div
+                      key={target.id}
+                      className="rounded-lg border border-border/80 bg-background/40 p-3"
+                    >
+                      <div className="text-xs font-medium">{target.label}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{target.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {plan.stopRules.length > 0 && (
+              <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+                <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-warning">
+                  Stop Rules
+                </div>
+                <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  {plan.stopRules.map((rule) => (
+                    <li key={rule} className="flex gap-2">
+                      <span className="text-warning">•</span>
+                      <span>{rule}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="mt-3 text-[11px] text-muted-foreground">
-              Informational only. External coaching makes the final decision.
+              {plan.status === "active" ? "Active imported plan." : "Local fallback plan."} External
+              coaching makes the final decision.
             </div>
           </div>
         </Surface>

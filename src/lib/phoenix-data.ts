@@ -333,20 +333,25 @@ export interface DailyCoachPlanTarget {
   reason?: string;
 }
 
+export type DailyCoachPlanSource = "ChatGPT" | "physio" | "surgeon" | "trainer" | "self" | "other";
+
+export type DailyCoachPlanStatus = "draft" | "active" | "archived" | "replaced";
+
 export interface DailyCoachPlan {
   id: string;
   date: string;
-  source: CoachNoteSource | "rule-engine";
+  source: DailyCoachPlanSource;
+  authorName?: string;
   importedFromNoteId?: string;
   createdAt: string;
+  importedAt: string;
+  planType: "daily_coach_plan";
   phaseId: PhaseId;
   missionIds: MissionId[];
   trackIds: RecoveryTrackId[];
-  readiness: {
-    status: "ready" | "modify" | "recover";
-    label: string;
-    reason: string;
-  };
+  readiness: "ready" | "modify" | "recover";
+  readinessReason?: string;
+  primaryFocus: string;
   focus: string;
   priority: string;
   workload: string;
@@ -355,6 +360,10 @@ export interface DailyCoachPlan {
   confidence: "High" | "Medium" | "Low";
   targets: DailyCoachPlanTarget[];
   quests: DailyQuest[];
+  stopRules: string[];
+  eveningCheckInFocus: string[];
+  notes: string;
+  status: DailyCoachPlanStatus;
   coachNoteIds?: string[];
 }
 
@@ -1133,18 +1142,19 @@ function createSeedDailyCoachPlan(date: string): DailyCoachPlan {
   return {
     id: planId,
     date,
-    source: "chatgpt",
+    source: "ChatGPT",
+    authorName: "ChatGPT",
     importedFromNoteId: "coach-note-1",
     createdAt: `${date}T08:05:00.000Z`,
+    importedAt: `${date}T08:05:00.000Z`,
+    planType: "daily_coach_plan",
     phaseId: "activation-early-rom",
     missionIds: ["wake-the-quad", "restore-extension", "normalize-walking"],
     trackIds: ["symptoms", "rom", "activation", "walking-movement"],
-    readiness: {
-      status: "modify",
-      label: "Modify",
-      reason:
-        "Expected early post-op swelling context is present, but pain is low and walking confidence is acceptable. Keep work gentle and evidence-led.",
-    },
+    readiness: "modify",
+    readinessReason:
+      "Expected early post-op swelling context is present, but pain is low and walking confidence is acceptable. Keep work gentle and evidence-led.",
+    primaryFocus: "Activation + early ROM without provoking tomorrow's knee response.",
     focus: "Activation + early ROM without provoking tomorrow's knee response.",
     priority: "Reinforce quad activation under low fatigue.",
     workload:
@@ -1177,6 +1187,20 @@ function createSeedDailyCoachPlan(date: string): DailyCoachPlan {
         reason: "Tomorrow's response decides whether this workload was appropriate.",
       },
     ],
+    stopRules: [
+      "Stop if pain rises above 4/10 during work.",
+      "Stop if swelling noticeably increases or walking quality worsens.",
+      "Avoid aggressive end-range ROM testing.",
+    ],
+    eveningCheckInFocus: [
+      "Pain during and after activity",
+      "Swelling change",
+      "Walking confidence after work",
+      "Any ROM symptom response",
+    ],
+    notes:
+      "Imported plan seed shows the intended Daily Coach Plan shape. External coaching remains outside the app.",
+    status: "active",
     quests: [
       {
         ...questBase,
@@ -1395,6 +1419,53 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
         ]
       : initial.checkIns;
 
+  const dailyCoachPlans = (saved.dailyCoachPlans ?? initial.dailyCoachPlans).map((plan) => {
+    const raw = plan as DailyCoachPlan & {
+      source?: string;
+      readiness?: DailyCoachPlan["readiness"] | { status?: string; reason?: string };
+      focus?: string;
+      priority?: string;
+      importedAt?: string;
+      planType?: string;
+      stopRules?: string[];
+      eveningCheckInFocus?: string[];
+      notes?: string;
+      status?: DailyCoachPlanStatus;
+    };
+    const readiness =
+      typeof raw.readiness === "object" && raw.readiness ? raw.readiness.status : raw.readiness;
+    const source =
+      raw.source?.toLowerCase() === "chatgpt"
+        ? "ChatGPT"
+        : raw.source === "physio" ||
+            raw.source === "surgeon" ||
+            raw.source === "trainer" ||
+            raw.source === "self" ||
+            raw.source === "other"
+          ? raw.source
+          : "self";
+
+    return {
+      ...raw,
+      source,
+      importedAt: raw.importedAt ?? raw.createdAt ?? new Date().toISOString(),
+      planType: "daily_coach_plan",
+      readiness:
+        readiness === "ready" || readiness === "recover" || readiness === "modify"
+          ? readiness
+          : "modify",
+      readinessReason:
+        raw.readinessReason ??
+        (typeof raw.readiness === "object" && raw.readiness ? raw.readiness.reason : undefined),
+      primaryFocus: raw.primaryFocus ?? raw.focus ?? raw.priority ?? "Daily coach plan",
+      focus: raw.focus ?? raw.primaryFocus ?? raw.priority ?? "Daily coach plan",
+      stopRules: raw.stopRules ?? [],
+      eveningCheckInFocus: raw.eveningCheckInFocus ?? [],
+      notes: raw.notes ?? "",
+      status: raw.status ?? "active",
+    };
+  });
+
   return {
     ...initial,
     ...saved,
@@ -1408,7 +1479,7 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
     campaignName: campaign.name,
     checkIns,
     milestones,
-    dailyCoachPlans: saved.dailyCoachPlans ?? initial.dailyCoachPlans,
+    dailyCoachPlans,
     coachNotes: saved.coachNotes ?? initial.coachNotes,
     athleteNotes: saved.athleteNotes ?? initial.athleteNotes,
     recoveryIqEvents: saved.recoveryIqEvents ?? initial.recoveryIqEvents,
@@ -2082,7 +2153,9 @@ function normalizeQuestForDate(
 }
 
 export function dailyCoachPlanForDate(s: PhoenixState, isoDate = todayIso()): DailyCoachPlan {
-  const importedPlan = s.dailyCoachPlans?.find((plan) => plan.date === isoDate);
+  const importedPlan =
+    s.dailyCoachPlans?.find((plan) => plan.date === isoDate && plan.status === "active") ??
+    s.dailyCoachPlans?.find((plan) => plan.date === isoDate);
   if (importedPlan) {
     return {
       ...importedPlan,
@@ -2099,16 +2172,16 @@ export function dailyCoachPlanForDate(s: PhoenixState, isoDate = todayIso()): Da
   return {
     id: `generated-plan-${isoDate}`,
     date: isoDate,
-    source: "rule-engine",
+    source: "self",
     createdAt: new Date().toISOString(),
+    importedAt: new Date().toISOString(),
+    planType: "daily_coach_plan",
     phaseId: phase.id,
     missionIds: missions.map((mission) => mission.id),
     trackIds: activeRecoveryTracks(s).map((track) => track.id),
-    readiness: {
-      status: readiness.state,
-      label: readiness.label,
-      reason: readiness.summary,
-    },
+    readiness: readiness.state,
+    readinessReason: readiness.summary,
+    primaryFocus: missions.map((mission) => mission.name).join(" + "),
     focus: missions.map((mission) => mission.name).join(" + "),
     priority: rec.priority,
     workload: rec.workload,
@@ -2124,11 +2197,308 @@ export function dailyCoachPlanForDate(s: PhoenixState, isoDate = todayIso()): Da
     quests: generateDailyQuestPlan(s, isoDate).map((quest) =>
       normalizeQuestForDate(s, isoDate, quest),
     ),
+    stopRules: ["Stop or modify if pain, swelling, or walking quality worsens."],
+    eveningCheckInFocus: ["Pain after activity", "Swelling change", "Walking or movement quality"],
+    notes: "Generated from local Project Phoenix rules when no imported coach plan is active.",
+    status: "draft",
   };
 }
 
 export function dailyQuestsForDate(s: PhoenixState, isoDate = todayIso()): DailyQuest[] {
   return dailyCoachPlanForDate(s, isoDate).quests;
+}
+
+export type DailyCoachPlanImportResult =
+  | { ok: true; plan: DailyCoachPlan }
+  | { ok: false; errors: string[] };
+
+const DAILY_COACH_PLAN_SOURCES: DailyCoachPlanSource[] = [
+  "ChatGPT",
+  "physio",
+  "surgeon",
+  "trainer",
+  "self",
+  "other",
+];
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function stringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean);
+  }
+  const single = stringValue(value);
+  return single ? [single] : [];
+}
+
+function normalizeDailyCoachPlanSource(value: unknown): DailyCoachPlanSource | null {
+  const source = stringValue(value);
+  if (source.toLowerCase() === "chatgpt") return "ChatGPT";
+  return DAILY_COACH_PLAN_SOURCES.includes(source as DailyCoachPlanSource)
+    ? (source as DailyCoachPlanSource)
+    : null;
+}
+
+function normalizeDailyCoachPlanReadiness(value: unknown): DailyCoachPlan["readiness"] {
+  const readiness = stringValue(value).toLowerCase();
+  return readiness === "ready" || readiness === "recover" || readiness === "modify"
+    ? readiness
+    : "modify";
+}
+
+function normalizePlanTargets(value: unknown): DailyCoachPlanTarget[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      if (typeof item === "string") {
+        const label = item.trim();
+        if (!label) return null;
+        return {
+          id: `target-${index + 1}-${slugify(label)}`,
+          label,
+          value: label,
+        };
+      }
+
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const label = stringValue(record.label) || stringValue(record.name) || `Target ${index + 1}`;
+      const value =
+        stringValue(record.value) ||
+        stringValue(record.target) ||
+        stringValue(record.description) ||
+        label;
+      return {
+        id: stringValue(record.id) || `target-${index + 1}-${slugify(label)}`,
+        label,
+        value,
+        reason: stringValue(record.reason) || undefined,
+        trackId: RECOVERY_TRACKS.some((track) => track.id === record.trackId)
+          ? (record.trackId as RecoveryTrackId)
+          : undefined,
+      };
+    })
+    .filter((target): target is DailyCoachPlanTarget => Boolean(target));
+}
+
+function normalizeImportedQuest(
+  value: unknown,
+  index: number,
+  date: string,
+  planId: string,
+): DailyQuest | null {
+  if (typeof value === "string") {
+    const label = value.trim();
+    if (!label) return null;
+    return {
+      id: `quest-${index + 1}-${slugify(label)}`,
+      date,
+      label,
+      title: label,
+      done: false,
+      status: "pending",
+      xp: 10,
+      kind: "main",
+      category: "main",
+      source: "daily-coach-plan",
+      reason: "Imported from Daily Coach Plan",
+      planId,
+    };
+  }
+
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const label =
+    stringValue(record.label) ||
+    stringValue(record.title) ||
+    stringValue(record.name) ||
+    `Quest ${index + 1}`;
+  const kindValue = stringValue(record.kind) || stringValue(record.category);
+  const kind: QuestKind = kindValue === "side" ? "side" : "main";
+  const xp = typeof record.xp === "number" && Number.isFinite(record.xp) ? record.xp : 10;
+  const status = stringValue(record.status);
+  const done =
+    typeof record.done === "boolean"
+      ? record.done
+      : status === "complete" || status === "completed";
+
+  return {
+    id: stringValue(record.id) || `quest-${index + 1}-${slugify(label)}`,
+    date,
+    label,
+    title: stringValue(record.title) || label,
+    done,
+    status: done ? "complete" : status === "skipped" ? "skipped" : "pending",
+    xp,
+    kind,
+    category: kind,
+    source: "daily-coach-plan",
+    reason: stringValue(record.reason) || "Imported from Daily Coach Plan",
+    phaseId: PHASE_CONFIGS.some((phase) => phase.id === record.phaseId)
+      ? (record.phaseId as PhaseId)
+      : undefined,
+    trackIds: Array.isArray(record.trackIds)
+      ? record.trackIds.filter((track): track is RecoveryTrackId =>
+          RECOVERY_TRACKS.some((known) => known.id === track),
+        )
+      : undefined,
+    missionId: MISSIONS.some((mission) => mission.id === record.missionId)
+      ? (record.missionId as MissionId)
+      : undefined,
+    planId,
+    target: stringValue(record.target) || undefined,
+  };
+}
+
+export function parseDailyCoachPlanJson(
+  rawJson: string,
+  fallbackDate = todayIso(),
+): DailyCoachPlanImportResult {
+  const errors: string[] = [];
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    return { ok: false, errors: ["JSON could not be parsed."] };
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, errors: ["Coach plan JSON must be an object."] };
+  }
+
+  const input = parsed as Record<string, unknown>;
+  const date = stringValue(input.date);
+  const source = normalizeDailyCoachPlanSource(input.source);
+  const primaryFocus = stringValue(input.primaryFocus);
+  const questsInput = input.quests;
+  const stopRulesInput = input.stopRules;
+
+  if (!date) errors.push("date is required.");
+  if (!source) errors.push("source is required.");
+  if (!primaryFocus) errors.push("primaryFocus is required.");
+  if (!Array.isArray(questsInput)) errors.push("quests array is required.");
+  if (!Array.isArray(stopRulesInput)) errors.push("stopRules array is required.");
+  if (errors.length > 0) return { ok: false, errors };
+
+  const planDate = date || fallbackDate;
+  const id = stringValue(input.id) || `plan-${planDate}-${Date.now()}`;
+  const quests = (questsInput as unknown[])
+    .map((quest, index) => normalizeImportedQuest(quest, index, planDate, id))
+    .filter((quest): quest is DailyQuest => Boolean(quest));
+  const stopRules = stringArray(stopRulesInput);
+
+  if (quests.length === 0) errors.push("quests array must contain at least one quest.");
+  if (stopRules.length === 0) errors.push("stopRules array must contain at least one stop rule.");
+  if (errors.length > 0) return { ok: false, errors };
+
+  const createdAt = stringValue(input.createdAt) || new Date().toISOString();
+  const importedAt = new Date().toISOString();
+  const activePhase = PHASE_CONFIGS.some((phase) => phase.id === input.phaseId)
+    ? (input.phaseId as PhaseId)
+    : "activation-early-rom";
+
+  return {
+    ok: true,
+    plan: {
+      id,
+      date: planDate,
+      source,
+      authorName: stringValue(input.authorName) || undefined,
+      createdAt,
+      importedAt,
+      planType: "daily_coach_plan",
+      phaseId: activePhase,
+      missionIds: Array.isArray(input.missionIds)
+        ? input.missionIds.filter((mission): mission is MissionId =>
+            MISSIONS.some((known) => known.id === mission),
+          )
+        : [],
+      trackIds: Array.isArray(input.trackIds)
+        ? input.trackIds.filter((track): track is RecoveryTrackId =>
+            RECOVERY_TRACKS.some((known) => known.id === track),
+          )
+        : [],
+      readiness: normalizeDailyCoachPlanReadiness(input.readiness),
+      readinessReason: stringValue(input.readinessReason) || undefined,
+      primaryFocus,
+      focus: primaryFocus,
+      priority: stringValue(input.priority) || primaryFocus,
+      workload: stringValue(input.workload) || "",
+      rationale: stringValue(input.rationale) || "",
+      nextReassessment: stringValue(input.nextReassessment) || "",
+      confidence:
+        input.confidence === "High" || input.confidence === "Low" || input.confidence === "Medium"
+          ? input.confidence
+          : "Medium",
+      targets: normalizePlanTargets(input.targets),
+      quests,
+      stopRules,
+      eveningCheckInFocus: stringArray(input.eveningCheckInFocus),
+      notes: stringValue(input.notes),
+      status: "draft",
+    },
+  };
+}
+
+export function activateDailyCoachPlan(plan: DailyCoachPlan) {
+  setState((prev) => {
+    const previousQuests = dailyQuestsForDate(prev, plan.date);
+    const previousCompleted = previousQuests.filter((quest) => quest.done);
+    const nextQuestCompletions = {
+      ...(prev.questCompletions ?? {}),
+      [plan.date]: {
+        ...(prev.questCompletions?.[plan.date] ?? {}),
+      },
+    };
+
+    const quests = plan.quests.map((quest) => {
+      const matchedCompleted = previousCompleted.find(
+        (existing) => existing.id === quest.id || existing.label === quest.label,
+      );
+      const done = Boolean(matchedCompleted ?? quest.done);
+      nextQuestCompletions[plan.date][quest.id] = done;
+      return {
+        ...quest,
+        date: plan.date,
+        done,
+        status: done ? "complete" : quest.status === "skipped" ? "skipped" : "pending",
+        source: "daily-coach-plan" as QuestSource,
+        planId: plan.id,
+      };
+    });
+
+    const activatedPlan: DailyCoachPlan = {
+      ...plan,
+      quests,
+      importedAt: plan.importedAt || new Date().toISOString(),
+      status: "active",
+    };
+
+    return {
+      ...prev,
+      dailyCoachPlans: [
+        ...(prev.dailyCoachPlans ?? []).map((existing) =>
+          existing.date === plan.date && existing.status === "active"
+            ? { ...existing, status: "replaced" as DailyCoachPlanStatus }
+            : existing,
+        ),
+        activatedPlan,
+      ],
+      questCompletions: nextQuestCompletions,
+      todayQuests: plan.date === todayIso() ? quests : prev.todayQuests,
+    };
+  });
 }
 
 export type Trend = "up" | "down" | "flat" | "none";

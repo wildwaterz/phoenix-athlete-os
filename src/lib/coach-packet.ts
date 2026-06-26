@@ -68,7 +68,7 @@ export function buildPacketJson(
       status: readiness.state,
       label: readiness.label,
       summary: readiness.summary,
-      reason: dailyCoachPlan.readiness.reason,
+      reason: dailyCoachPlan.readinessReason,
     },
     morning,
     previousMorning: previous,
@@ -133,7 +133,9 @@ export function buildPacketMarkdown(
   lines.push(`**Current Mission:** ${mission.name} — ${mission.phase} (${mission.progress}%)  `);
   lines.push(`**Active Missions:** ${missions.map((item) => item.name).join(", ")}  `);
   lines.push(`**Recovery IQ:** Level ${level} · ${s.recoveryIqXp} XP  `);
-  lines.push(`**Readiness:** ${readiness.label} — ${dailyCoachPlan.readiness.reason}`);
+  lines.push(
+    `**Readiness:** ${readiness.label} — ${dailyCoachPlan.readinessReason ?? readiness.summary}`,
+  );
   lines.push("");
 
   lines.push(`## Daily Coach Plan`);

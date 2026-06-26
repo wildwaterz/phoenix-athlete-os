@@ -12,7 +12,8 @@ import {
 } from "@/lib/phoenix-data";
 import { useState } from "react";
 import { CoachPacketDialog } from "@/components/coach-packet-dialog";
-import { CalendarDays, Download } from "lucide-react";
+import { ImportCoachPlanDialog } from "@/components/import-coach-plan-dialog";
+import { CalendarDays, Download, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/check-in")({
@@ -110,6 +111,7 @@ function CheckInPage() {
   const [selectedDate, setSelectedDate] = useState(today);
   const [tab, setTab] = useState<"morning" | "evening">("morning");
   const [packetOpen, setPacketOpen] = useState<null | "morning" | "evening">(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const savedMorning = getMorningForDate(s, selectedDate);
   const savedEvening = getEveningForDate(s, selectedDate);
@@ -273,6 +275,12 @@ function CheckInPage() {
             >
               <Download className="h-4 w-4" /> Generate morning coach packet
             </button>
+            <button
+              onClick={() => setImportOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-border bg-background/40 px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-accent"
+            >
+              <Upload className="h-4 w-4" /> Import coach plan
+            </button>
           </div>
         </Surface>
       ) : (
@@ -354,6 +362,9 @@ function CheckInPage() {
           date={selectedDate}
           onClose={() => setPacketOpen(null)}
         />
+      )}
+      {importOpen && (
+        <ImportCoachPlanDialog selectedDate={selectedDate} onClose={() => setImportOpen(false)} />
       )}
     </AppShell>
   );
