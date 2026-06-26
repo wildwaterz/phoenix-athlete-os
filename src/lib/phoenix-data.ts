@@ -492,3 +492,44 @@ export const PHASES = [
 export function currentPhaseN(s: PhoenixState): number {
   return PHASES.find((p) => p.missionId === s.currentMissionId)?.n ?? 1;
 }
+
+export function missionMilestoneProgress(s: PhoenixState, missionId: MissionId) {
+  const list = s.milestones.filter((m) => m.mission === missionId);
+  const total = Math.max(list.length, 1);
+  const done = list.filter((m) => m.status === "unlocked").length;
+  return { done, total, pct: Math.round((done / total) * 100) };
+}
+
+export function todaysWin(
+  current: MorningCheckIn | null,
+  previous: MorningCheckIn | null,
+): { label: string; detail: string } {
+  if (!current) return { label: "Show up today", detail: "Log a check-in to start the streak." };
+  if (previous) {
+    if (current.walkingConfidence > previous.walkingConfidence)
+      return {
+        label: `Walking confidence improved by +${current.walkingConfidence - previous.walkingConfidence}`,
+        detail: "Gait is trending the right direction.",
+      };
+    if (current.quadActivation > previous.quadActivation)
+      return {
+        label: `Quad activation improved by +${current.quadActivation - previous.quadActivation}`,
+        detail: "Neuromuscular control is consolidating.",
+      };
+    if (current.pain < previous.pain)
+      return {
+        label: `Pain dropped by ${previous.pain - current.pain}`,
+        detail: "Tissue is quieting down.",
+      };
+    if (current.swelling < previous.swelling)
+      return {
+        label: `Swelling dropped by ${previous.swelling - current.swelling}`,
+        detail: "Inflammation gate is loosening.",
+      };
+  }
+  if (current.pain <= 2 && current.swelling <= 2)
+    return { label: "Pain remained in the green zone", detail: "Stable baseline held." };
+  if (current.swelling <= 2)
+    return { label: "Swelling stayed stable", detail: "Maintenance is a win." };
+  return { label: "Check-in logged", detail: "Evidence over assumption — that's the work." };
+}
