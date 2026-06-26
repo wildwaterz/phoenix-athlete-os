@@ -1,8 +1,8 @@
 # Roadmap
 
-Version: 1.0
-Owner: Kevin Sauvageau
-Product: Project Phoenix OS
+Version: 1.0  
+Owner: Kevin Sauvageau  
+Product: Project Phoenix OS  
 Status: Living Document
 
 ## Purpose
@@ -24,7 +24,7 @@ Goals:
 
 Key outputs:
 
-- PROJECT.md
+- README.md
 - Product principles
 - Coach packet schema
 - Decision engine

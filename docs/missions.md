@@ -1,139 +1,233 @@
 # Missions
 
-Version: 1.0
-Owner: Kevin Sauvageau
-Product: Project Phoenix OS
+Version: 1.1  
+Owner: Kevin Sauvageau  
+Product: Project Phoenix OS  
 Status: Living Document
 
 ## Purpose
 
-Missions are the core progression structure of Project Phoenix.
+Missions are focused recovery objectives. They are not the same thing as phases.
 
-The app should organize work around missions rather than arbitrary weeks.
+The product model is:
+
+```text
+Campaign > Phase > Recovery Tracks > Missions > Milestones > Daily Quests
+```
+
+## Definitions
+
+### Campaign
+
+The overall rehab journey.
+
+Example: `ACL Revision Prehab`.
+
+### Phase
+
+A broad stage of recovery.
+
+Examples:
+
+- Acute Response
+- Activation + Early ROM
+- Movement Capacity
+- Strength Capacity
+- Return Preparation
+
+### Recovery Track
+
+A parallel recovery domain that can progress independently.
+
+Tracks:
+
+- Symptoms
+- ROM
+- Activation
+- Walking / Movement
+- Capacity
+- Return to Sport
+
+### Mission
+
+A focused objective inside one or more recovery tracks.
+
+A mission answers:
+
+> What am I working on right now?
+
+### Milestone
+
+Evidence that a capability has been earned.
+
+### Quest
+
+Today’s action.
 
 ## Mission Design
 
 Each mission should include:
 
-- Name
-- Phase
-- Objective
-- Why it matters
-- Estimated duration
-- Completion criteria
-- Next unlock
-- Related milestones
+- name
+- related phase
+- related recovery track(s)
+- objective
+- why it matters
+- completion criteria
+- related milestones
+- possible daily quests
+
+## Important Product Rule
+
+Do not treat mission number and phase number as the same concept.
+
+Bad:
+
+```text
+Mission 2 = Phase 2
+```
+
+Better:
+
+```text
+Phase 2 = Activation + Early ROM
+Active missions/tracks = Wake the Quad, Restore Range, Normalize Walking
+```
 
 ## Current Campaign: ACL Revision Prehab
 
-### Mission 1: Calm the Knee
+### Phase 1: Acute Response
 
-Phase: Acute Response
+Goal: reduce pain/swelling, establish baseline, and move safely.
 
-Objective:
+Active tracks:
 
-Reduce pain and swelling, restore safe movement, and establish baseline tracking.
+- Symptoms
+- Walking / Movement
+- Activation
 
-Why it matters:
+Possible missions:
 
-A calm knee is easier to move, easier to activate, and easier to progress.
+#### Calm the Knee
 
-Completion criteria:
+Objective: reduce surgical response and establish a stable daily baseline.
 
-- Pain controlled
-- Swelling stable or improving
-- Walking safely with appropriate support
-- Quad activation present
-- No concerning symptoms
-
-Next unlock:
-
-Wake the Quad
-
-### Mission 2: Wake the Quad
-
-Phase: Activation
-
-Objective:
-
-Re-establish voluntary quad activation and lock-out control.
-
-Why it matters:
-
-Without an active quad, the knee cannot stabilize well under load and extension will be harder to restore.
+Why it matters: a calmer knee is easier to move, easier to activate, and easier to progress.
 
 Completion criteria:
 
-- Quad activation consistently 4/5 or better
-- Straight leg raise without lag, when clinically appropriate
-- Walking confidence improving
-- Swelling stable
+- pain controlled
+- swelling stable or improving
+- walking safely with appropriate support
+- quad signal present
+- no concerning symptoms
 
-Next unlock:
+Day 0 / Day 1 quest examples:
 
-Restore Extension
+- ankle pumps
+- assisted walking practice
+- comfortable elevation / swelling control
+- gentle quad activation check
+- evening check-in
+- protein / hydration / sleep setup
 
-### Mission 3: Restore Extension
+### Phase 2: Activation + Early ROM
 
-Phase: Range
+Goal: restore quad signal, early knee movement, and walking quality.
 
-Objective:
+Active tracks:
 
-Restore full passive and active knee extension.
+- Symptoms
+- ROM
+- Activation
+- Walking / Movement
 
-Why it matters:
+Possible missions:
 
-Full extension supports normal walking, quad function, future strengthening, and later athletic mechanics.
+#### Wake the Quad
 
-Completion criteria:
+Track: Activation
 
-- Passive extension to 0°
-- Extension stable across multiple check-ins
-- No next-day swelling increase after extension work
+Objective: re-establish voluntary quad activation and early lock-out control.
 
-Next unlock:
-
-Build Capacity
-
-### Mission 4: Build Capacity
-
-Phase: Capacity
-
-Objective:
-
-Gradually improve tolerance to walking, strength work, and low-risk conditioning.
-
-Why it matters:
-
-Capacity creates the foundation for the later ACL revision and long-term athletic return.
+Why it matters: the quad must fire reliably before meaningful loading and later athletic control can return.
 
 Completion criteria:
 
-- Walking confidence near normal
-- Strength work tolerated
-- Swelling stable after activity
-- Conditioning introduced without negative response
+- quad activation consistently 4/5 or better
+- kneecap-lift quad set is repeatable
+- straight leg raise without lag when clinically appropriate
+- no symptom increase from activation work
 
-Next unlock:
+Possible quests:
 
-Return Preparation
+- quad sets
+- gentle terminal knee extension work if cleared
+- activation check-ins
 
-### Mission 5: Return Preparation
+#### Restore Range
 
-Phase: Return
+Track: ROM
 
-Objective:
+Objective: restore comfortable extension and flexion without increasing symptoms.
 
-Prepare the athlete for definitive ACL revision surgery and future return-to-sport progression.
-
-Why it matters:
-
-A stronger, fitter, calmer knee entering surgery may improve the next phase of rehab.
+Why it matters: the knee needs both straightening and bending capacity. Extension supports walking and quad control; flexion supports comfort, function, stairs, sitting, biking, and later training.
 
 Completion criteria:
 
-- Excellent ROM
-- Minimal swelling
-- Improved strength baseline
-- Good aerobic foundation
-- Clear plan for revision surgery
+- extension trending toward neutral
+- flexion improving or stable across check-ins
+- heel slides tolerated without sharp pain or next-day swelling increase
+- no end-range pinching pattern that worsens symptoms
+
+Possible quests:
+
+- gentle heel prop / extension exposure
+- gentle heel slides within comfortable range
+- ROM status check
+
+#### Normalize Walking
+
+Track: Walking / Movement
+
+Objective: improve walking quality and reduce reliance on crutches without introducing a limp.
+
+Why it matters: ditching support too early can reinforce compensation. The goal is better walking, not faster independence.
+
+Completion criteria:
+
+- walking confidence improving
+- support reduced only when mechanics remain clean
+- no next-day swelling or pain increase from walking volume
+
+### Phase 3: Movement Capacity
+
+Goal: move normally and tolerate basic loading.
+
+Walking confidence should become Movement Quality.
+
+Possible missions:
+
+- Build Movement Quality
+- Restore Basic Capacity
+- Reclaim Daily Function
+
+### Phase 4: Strength Capacity
+
+Goal: train and recover from it.
+
+Possible missions:
+
+- Build Strength Tolerance
+- Progress Load
+- Build Conditioning Base
+
+### Phase 5: Return Preparation
+
+Goal: perform and repeat sport-specific work.
+
+Possible missions:
+
+- Rebuild Sport Confidence
+- Return to Skating
+- Return to Hockey Preparation

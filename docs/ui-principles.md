@@ -1,8 +1,8 @@
 # UI Principles
 
-Version: 1.0
-Owner: Kevin Sauvageau
-Product: Project Phoenix OS
+Version: 1.0  
+Owner: Kevin Sauvageau  
+Product: Project Phoenix OS  
 Status: Living Document
 
 ## Purpose

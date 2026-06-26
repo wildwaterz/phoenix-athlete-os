@@ -1,214 +1,154 @@
 # Data Model
 
-Version: 1.0
-Owner: Kevin Sauvageau
-Product: Project Phoenix OS
+Version: 1.1  
+Owner: Kevin Sauvageau  
+Product: Project Phoenix OS  
 Status: Living Document
 
 ## Purpose
 
-This document defines the core data objects used by Project Phoenix OS.
+The data model should support phase-aware rehab tracking without requiring a redesign when the athlete moves from early post-op tracking to training and sport preparation.
 
-The model should support the current ACL campaign while remaining flexible enough for future athletic campaigns.
+## Core Hierarchy
 
-## Athlete
+```text
+Campaign > Phase > Recovery Tracks > Missions > Milestones > Daily Quests
+```
 
-Represents the person using the app.
+## Types
 
-Fields:
+```ts
+type Campaign = {
+  id: string;
+  name: string;
+  surgeryType?: string;
+  startedAt: string;
+  activePhaseId: string;
+};
 
-- id
-- name
-- timezone
-- preferredUnits
-- activeCampaignId
+type Phase = {
+  id: string;
+  name: string;
+  order: number;
+  dashboardQuestion: string;
+  activeTracks: RecoveryTrackId[];
+  primaryMetrics: MetricId[];
+  supportingMetrics: MetricId[];
+};
 
-## Campaign
+type RecoveryTrackId =
+  | 'symptoms'
+  | 'rom'
+  | 'activation'
+  | 'walking_movement'
+  | 'capacity'
+  | 'return_to_sport';
 
-Represents a long-term athletic project.
+type Mission = {
+  id: string;
+  name: string;
+  phaseId: string;
+  trackIds: RecoveryTrackId[];
+  objective: string;
+  whyItMatters: string;
+  status: 'locked' | 'active' | 'complete';
+  milestoneIds: string[];
+};
 
-Example: ACL Revision Prehab.
+type Milestone = {
+  id: string;
+  name: string;
+  trackId: RecoveryTrackId;
+  status: 'locked' | 'in_progress' | 'unlocked';
+  criteria: string[];
+  unlockedAt?: string;
+};
 
-Fields:
+type DailyQuest = {
+  id: string;
+  date: string;
+  title: string;
+  category: 'main' | 'side';
+  source: 'phase' | 'mission' | 'track' | 'rule' | 'manual';
+  reason?: string;
+  xp: number;
+  status: 'pending' | 'complete' | 'skipped';
+};
+```
 
-- id
-- name
-- description
-- startDate
-- targetDate
-- surgeryType
-- status
-- currentMissionId
+## Check-In Model
 
-## Mission
+The app should not rely on a single permanent check-in form.
 
-Represents the current focus area.
+Use stable core metrics plus phase-specific fields.
 
-Fields:
+```ts
+type DailyCheckIn = {
+  date: string;
+  phaseId: string;
+  morning?: MorningCheckIn;
+  evening?: EveningCheckIn;
+};
 
-- id
-- campaignId
-- name
-- phase
-- objective
-- whyItMatters
-- estimatedDuration
-- status
-- milestoneIds
-- nextUnlockId
+type MorningCheckIn = {
+  pain?: number;
+  swellingLevel?: number;
+  swellingContext?: 'surgical_baseline' | 'activity_response' | 'unknown';
+  swellingTrend?: 'improved' | 'stable' | 'worse' | 'unknown';
+  sleepHours?: number;
+  proteinTargetG?: number;
+  notes?: string;
 
-## Milestone
+  // Phase 1-2 fields
+  walkingConfidence?: number;
+  confidenceInKnee?: number;
+  quadActivation?: number;
+  extensionStatus?: 'neutral' | 'slightly_limited' | 'moderately_limited' | 'significantly_limited' | 'not_tested';
+  extensionEstimateDegrees?: 0 | 5 | 10 | 15;
+  flexionDegrees?: number;
 
-Represents an evidence-based progression marker.
+  // Later phase placeholders
+  movementQuality?: number;
+  trainingReadiness?: number;
+  sportConfidence?: number;
+};
 
-Fields:
+type EveningCheckIn = {
+  exercisesCompleted?: string;
+  painDuringActivity?: number;
+  painAfterActivity?: number;
+  swellingChange?: -3 | -2 | -1 | 0 | 1 | 2 | 3;
+  walkingConfidenceAfter?: number;
+  movementQualityAfter?: number;
+  energyFatigue?: number;
+  milestonesAchieved?: string;
+  todayWin?: string;
+  notes?: string;
+};
+```
 
-- id
-- missionId
-- name
-- description
-- whyItMatters
-- evidenceRequired
-- status
-- unlockedAt
-- coachNotes
+## Phase Config
 
-Status values:
+```ts
+type PhaseConfig = {
+  id: string;
+  name: string;
+  dashboardQuestion: string;
+  activeTracks: RecoveryTrackId[];
+  primaryMetrics: MetricId[];
+  supportingMetrics: MetricId[];
+  morningCheckInFields: string[];
+  eveningCheckInFields: string[];
+  questTemplates: string[];
+  readinessRules: string[];
+  smallWinRules: string[];
+};
+```
 
-- locked
-- in-progress
-- unlocked
+## Important Rules
 
-## Daily Check-In
-
-Represents one day of athlete-reported data.
-
-Fields:
-
-- id
-- athleteId
-- campaignId
-- date
-- recoveryDay
-- morningCheckIn
-- eveningCheckIn
-
-## Morning Check-In
-
-Fields:
-
-- pain
-- swelling
-- walkingConfidence
-- quadActivation
-- extension
-- flexion
-- sleepHours
-- weightKg
-- proteinTargetG
-- confidenceInKnee
-- notes
-- questionsForCoach
-
-## Evening Check-In
-
-Fields:
-
-- exercisesCompleted
-- painDuringActivity
-- painAfterActivity
-- swellingChange
-- walkingConfidenceAfter
-- fatigue
-- milestonesAchieved
-- xpEarned
-- notes
-- questionsForCoach
-
-## Readiness
-
-Represents the app’s structured readiness state.
-
-Fields:
-
-- status
-- label
-- recommendation
-- reason
-- confidence
-
-Status values:
-
-- green
-- yellow
-- red
-
-## Recovery IQ
-
-Fields:
-
-- athleteId
-- level
-- xp
-- xpToNextLevel
-- title
-- history
-
-## XP Event
-
-Represents an XP-earning behavior.
-
-Fields:
-
-- id
-- date
-- athleteId
-- campaignId
-- amount
-- reason
-- source
-- relatedMilestoneId
-- relatedCoachJournalId
-
-## Coach Journal Entry
-
-Fields:
-
-- id
-- date
-- athleteId
-- campaignId
-- observation
-- interpretation
-- decision
-- nextFocus
-- xpAwarded
-- confidence
-
-## Coach Packet
-
-Represents an exportable coaching context packet.
-
-Fields:
-
-- kind
-- generatedAt
-- localGeneratedAt
-- timezone
-- athlete
-- campaign
-- mission
-- recoveryIq
-- readiness
-- morning
-- evening
-- previousMorning
-- previousEvening
-- trends
-- milestones
-- completedToday
-- pendingToday
-- coachJournalRecent
-- questionsForCoach
-- currentConcerns
-- lastCoachFocus
+- Walking confidence is important in early phases but should be replaced later by movement quality, training tolerance, or sport confidence.
+- ROM includes both extension and flexion.
+- Swelling level and swelling response are different data points.
+- A high swelling level early post-op should not automatically mean the athlete must do nothing.
+- Readiness must consider phase, symptom trend, and activity response.

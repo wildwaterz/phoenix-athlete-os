@@ -3,6 +3,8 @@ import { AppShell, ProgressBar, StatTile, Surface } from "@/components/app-shell
 import {
   currentMission,
   currentPhaseN,
+  dailyQuestsForDate,
+  type DailyQuest,
   daysPostOp,
   getMorningForDate,
   levelFromXp,
@@ -78,24 +80,36 @@ function Dashboard() {
   const dayPostOp = daysPostOp(s, selectedDate);
   const principle = principleForPhase(phaseN);
   const win = todaysWin(m, prev);
+  const quests = dailyQuestsForDate(s, selectedDate);
 
   const toggleQuest = (id: string) =>
-    setState((prev) => ({
-      ...prev,
-      todayQuests: prev.todayQuests.map((q) =>
-        q.id === id
-          ? { ...q, done: !q.done }
-          : q,
-      ),
-      recoveryIqXp: prev.recoveryIqXp + (() => {
-        const q = prev.todayQuests.find((x) => x.id === id);
-        if (!q) return 0;
-        return q.done ? -q.xp : q.xp;
-      })(),
-    }));
+    setState((prev) => {
+      const dateQuests = dailyQuestsForDate(prev, selectedDate);
+      const q = dateQuests.find((x) => x.id === id);
+      if (!q) return prev;
 
-  const mainQuests = s.todayQuests.filter((q) => q.kind === "main");
-  const sideQuests = s.todayQuests.filter((q) => q.kind === "side");
+      const done = !q.done;
+      const questCompletions = {
+        ...(prev.questCompletions ?? {}),
+        [selectedDate]: {
+          ...(prev.questCompletions?.[selectedDate] ?? {}),
+          [id]: done,
+        },
+      };
+
+      return {
+        ...prev,
+        questCompletions,
+        todayQuests:
+          selectedDate === todayIso
+            ? dateQuests.map((quest) => (quest.id === id ? { ...quest, done } : quest))
+            : prev.todayQuests,
+        recoveryIqXp: prev.recoveryIqXp + (done ? q.xp : -q.xp),
+      };
+    });
+
+  const mainQuests = quests.filter((q) => q.kind === "main");
+  const sideQuests = quests.filter((q) => q.kind === "side");
   const rec = s.todayRecommendation;
   const readinessTone =
     readiness.state === "ready" ? "good" : readiness.state === "modify" ? "watch" : "alert";
@@ -127,8 +141,7 @@ function Dashboard() {
             Day {dayPostOp} Post-Op · {dayOfWeek}, {longDate}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Current Campaign ·{" "}
-            <span className="text-foreground">{s.campaignName}</span>
+            Current Campaign · <span className="text-foreground">{s.campaignName}</span>
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -164,7 +177,9 @@ function Dashboard() {
           <span className="inline-flex items-center gap-1.5">
             <Flame className="h-3 w-3 text-phoenix" /> Recovery IQ
           </span>
-          <span className="text-foreground">Lvl {iq.level} · {s.recoveryIqXp} XP</span>
+          <span className="text-foreground">
+            Lvl {iq.level} · {s.recoveryIqXp} XP
+          </span>
         </div>
         <div className="mt-2">
           <ProgressBar value={iq.pct} />
@@ -225,22 +240,27 @@ function Dashboard() {
               className="pointer-events-auto p-3"
             />
           </PopoverContent>
-        {!m && (
-          <div className="mt-3 flex items-center justify-between rounded-lg border border-dashed border-border/80 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
-            <span>No check-in recorded for this day.</span>
-            <Link to="/check-in" className="font-medium text-phoenix hover:underline">
-              {isToday ? "Log check-in" : "Backfill →"}
-            </Link>
-          </div>
-        )}
+          {!m && (
+            <div className="mt-3 flex items-center justify-between rounded-lg border border-dashed border-border/80 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+              <span>No check-in recorded for this day.</span>
+              <Link to="/check-in" className="font-medium text-phoenix hover:underline">
+                {isToday ? "Log check-in" : "Backfill →"}
+              </Link>
+            </div>
+          )}
         </Surface>
       </Popover>
 
       {/* Hero mission card */}
       <Surface className="mb-5 overflow-hidden p-0">
         <div className="relative p-6 md:p-7">
-          <div className="absolute inset-0 -z-10 opacity-30"
-               style={{ background: "radial-gradient(600px 200px at 80% 0%, var(--color-phoenix-glow), transparent 60%)" }} />
+          <div
+            className="absolute inset-0 -z-10 opacity-30"
+            style={{
+              background:
+                "radial-gradient(600px 200px at 80% 0%, var(--color-phoenix-glow), transparent 60%)",
+            }}
+          />
           <div className="min-w-0">
             <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-phoenix">
               Current Mission · {mission.phase}
@@ -472,17 +492,13 @@ function Dashboard() {
 
 // ---------- local helpers ----------
 
-function QuestRow({
-  q,
-  onToggle,
-}: {
-  q: { id: string; label: string; done: boolean; xp: number; kind: "main" | "side" };
-  onToggle: () => void;
-}) {
+function QuestRow({ q, onToggle }: { q: DailyQuest; onToggle: () => void }) {
   return (
     <li>
       <button
         onClick={onToggle}
+        title={q.reason}
+        aria-label={`${q.label}. ${q.reason}`}
         className={cn(
           "flex w-full items-center gap-3 rounded-xl border border-border bg-background/40 px-3 py-3 text-left transition hover:bg-accent/60",
           q.done && "opacity-70",
@@ -499,9 +515,7 @@ function QuestRow({
         <span
           className={cn(
             "rounded-md px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em]",
-            q.kind === "side"
-              ? "bg-muted text-muted-foreground"
-              : "bg-phoenix/10 text-phoenix",
+            q.kind === "side" ? "bg-muted text-muted-foreground" : "bg-phoenix/10 text-phoenix",
           )}
         >
           +{q.xp} XP

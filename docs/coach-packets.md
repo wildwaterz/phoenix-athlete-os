@@ -1,155 +1,135 @@
 # Coach Packets
 
-Version: 1.0
-Owner: Kevin Sauvageau
-Product: Project Phoenix OS
+Version: 1.1  
+Owner: Kevin Sauvageau  
+Product: Project Phoenix OS  
 Status: Living Document
 
 ## Purpose
 
-Coach Packets are exportable summaries designed to give an external coach or AI assistant enough context to assess the athlete’s status without needing direct access to the app.
+Coach Packets allow Project Phoenix to export structured evidence for an external coach, clinician, or AI assistant.
 
-Project Phoenix owns the data. AI interprets the data.
+The app owns the data. External coaching interprets it.
 
-## Packet Types
+## Packet Requirements
 
-Project Phoenix supports two daily coach packets:
+Coach packets should include:
 
-1. Morning Coach Packet
-2. Evening Coach Packet
-
-## Morning Coach Packet
-
-Purpose:
-
-Determine the day’s starting point and decide whether the athlete should progress, hold, modify, or recover.
-
-### Required Fields
-
-- kind: morning
-- generatedAt
-- localGeneratedAt
-- timezone
-- athleteName
 - campaign
-- surgeryType
-- recoveryDay
-- daysSinceSurgery
-- currentMission
-- recoveryIq
-- readiness
+- phase
+- active recovery tracks
+- current mission(s)
+- recovery day
 - morning check-in
-- previousMorning
-- trends
-- previousEvening
-- milestones
-- completedToday
-- pendingToday
-- coachJournalRecent
-- questionsForCoach
-- currentConcerns
-- lastCoachFocus
+- previous evening response
+- readiness state
+- readiness reason
+- quests completed / pending
+- small win
+- coach questions
+- concerns
 
-### Morning Check-In Fields
+## Important Fields
 
-- date
-- pain
-- swelling
-- walkingConfidence
-- quadActivation
-- extension
-- flexion
-- sleepHours
-- weightKg
-- proteinTargetG
-- confidenceInKnee
-- notes
-
-### Readiness Object
+### Phase and Tracks
 
 ```json
 {
-  "status": "green",
-  "label": "Ready",
-  "recommendation": "Proceed as planned",
-  "reason": "Pain and swelling improved, walking confidence improved, and no negative response was reported.",
-  "confidence": "medium"
+  "phase": "Phase 2 · Activation + Early ROM",
+  "activeTracks": ["Symptoms", "ROM", "Activation", "Walking / Movement"]
 }
 ```
 
-### Trend Object
+### Swelling Context
 
 ```json
 {
-  "painChange": -1,
-  "swellingChange": -1,
-  "walkingConfidenceChange": 1,
-  "quadActivationChange": 1,
-  "extensionChange": -2,
-  "extensionTrendLabel": "Improved 2°",
-  "flexionChange": 5
+  "swellingLevel": 5,
+  "swellingTrend": "stable",
+  "swellingContext": "surgical_baseline"
 }
 ```
 
-## Evening Coach Packet
+This prevents the system from treating expected surgical swelling as activity-induced failure.
 
-Purpose:
+### ROM
 
-Evaluate whether the knee tolerated the day.
+```json
+{
+  "rom": {
+    "extensionStatus": "slightly_limited",
+    "extensionEstimateDegrees": 5,
+    "flexionDegrees": 118,
+    "flexionComfort": "comfortable_range_only"
+  }
+}
+```
 
-### Required Fields
+### Readiness
 
-- kind: evening
-- generatedAt
-- localGeneratedAt
-- timezone
-- athleteName
-- campaign
-- surgeryType
-- recoveryDay
-- currentMission
-- morningCheckInSummary
-- eveningCheckIn
-- workCompleted
-- painDuringActivity
-- painAfterActivity
-- swellingChange
-- walkingConfidenceAfter
-- fatigue
-- milestonesAchieved
-- xpEarned
-- notes
-- questionsForCoach
+```json
+{
+  "readiness": {
+    "status": "modify",
+    "label": "Modify",
+    "reason": "Expected post-op swelling is present, but pain is low and walking confidence is acceptable. Complete gentle recovery work and avoid volume increases."
+  }
+}
+```
 
-## Markdown Export
+### Small Win
 
-The Markdown export should be clean when pasted into ChatGPT or Claude.
+```json
+{
+  "smallWin": {
+    "title": "Pain improved",
+    "description": "Pain dropped by 1 point compared with the previous check-in.",
+    "source": "rule"
+  }
+}
+```
 
-It should use:
+## Markdown Packet Structure
 
-- Clear headings
-- Bullet points
-- No unnecessary emojis except status markers
-- Plain language
+```md
+# Project Phoenix Coach Packet
 
-## JSON Export
+Date:
+Recovery Day:
+Campaign:
+Phase:
+Active Tracks:
+Current Mission(s):
+Readiness:
+Readiness Reason:
 
-The JSON export should be valid, formatted, and stable.
+## Morning Check-In
+Pain:
+Swelling Level:
+Swelling Context:
+Walking Confidence:
+Quad Activation:
+Extension Status:
+Flexion:
+Sleep:
+Protein:
+Notes:
 
-It should prioritize structure over display text.
+## Previous Evening Response
+Work completed:
+Pain during:
+Pain after:
+Swelling change:
+Walking / movement quality:
+Notes:
 
-## User-Editable Questions
+## Daily Quests
+Completed:
+Pending:
 
-The user should be able to add or edit questions before export.
+## Small Win
 
-Examples:
+## Questions for Coach
 
-- Should I prioritize extension or activation today?
-- Did yesterday’s workload create a negative response?
-- Am I ready to add the next progression?
-
-## Design Principle
-
-A coach packet should eliminate repetitive explanation.
-
-The athlete should be able to click Copy, paste into a coach or AI chat, and receive useful guidance without manually restating context.
+## Concerns
+```

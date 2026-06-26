@@ -1,128 +1,75 @@
-# Product Backlog
+# Backlog
 
-Version: 1.0
-Owner: Kevin Sauvageau
-Product: Project Phoenix OS
+Version: 1.1  
+Owner: Kevin Sauvageau  
+Product: Project Phoenix OS  
 Status: Living Document
 
-## Purpose
+## P0 — Now
 
-This backlog organizes product work by priority.
+### Phase-Aware Architecture
 
-The goal is to keep Project Phoenix focused and prevent feature bloat.
+- Create phase config layer.
+- Dashboard reads metrics from active phase config.
+- Check-In renders fields from active phase config.
+- Fully wire Phase 1 and Phase 2.
+- Add placeholder configs for Phase 3-5.
 
-## P0: Required for MVP
+### Recovery Tracks
 
-These features are required for daily use.
+Add track model:
 
-### Dashboard
+- Symptoms
+- ROM
+- Activation
+- Walking / Movement
+- Capacity
+- Return to Sport
 
-- Current mission
-- Date selector
-- Recovery day
-- Today’s readiness
-- Key metrics
-- Mission progress
-- Today’s quests
-- Coach recommendation
-- Coach journal preview
-- Recovery phase indicator
+### Fix Missions / Phases Overlap
 
-### Daily Check-In
+- Do not treat Mission 1 = Phase 1, Mission 2 = Phase 2.
+- Add Campaign > Phase > Recovery Tracks > Missions > Milestones > Quests model.
+- Rename Phase 2 to Activation + Early ROM.
 
-- Morning check-in
-- Evening check-in
-- Date selector
-- Backfill missed days
-- Helper text for scoring
-- Form sections
+### Add Flexion / ROM Support
 
-### Coach Packet Export
+- Track extension and flexion.
+- Add gentle flexion-related quest support.
+- Add ROM milestones for extension and flexion.
 
-- Morning packet
-- Evening packet
-- Markdown export
-- JSON export
-- Copy to clipboard
-- Download
-- Editable questions for coach
+### Fix Readiness Logic
 
-### Missions
+- Separate surgical baseline swelling from activity-induced swelling.
+- Day 0-3 swelling 4-6/10 should usually produce Modify, not Recover, when pain is low and walking is acceptable.
 
-- Current mission
-- Objective
-- Why it matters
-- Completion criteria
-- Next unlock
+### Fix Quest Generation
 
-### Milestones
+- Remove hardcoded quest list.
+- Generate quests from phase, track, recovery day, check-in values, previous response, and constraints.
+- Add quest source/reason field.
 
-- Status: locked / in-progress / unlocked
-- Evidence required
-- Date unlocked
-- Coach notes
+## P1 — Next
 
-### Recovery IQ
+### Small Wins Engine
 
-- XP system
-- Level display
-- XP rules
-- Coach journal connection
+- Rule-based win generation.
+- Manual evening win selection.
+- Dashboard shows highest-priority win only.
 
-### Coach Journal
+### Coach Packet Improvements
 
-- Observation
-- Interpretation
-- Decision
-- Next focus
-- XP awarded
+- Include phase, active tracks, swelling context, ROM status, previous evening response, and small wins.
 
-### Glossary and Principles
+### Better Extension Input
 
-- Athlete-friendly terminology
-- Product principles
-- Coaching philosophy
+- Replace precise degree input with home-friendly bands for early post-op.
 
-## P1: Strong MVP Enhancements
+## P2 — Later
 
-These add real value after the daily loop works.
-
-- Trend charts
-- Evidence timeline
-- Today’s Win
-- Phase-aware daily principles
-- Structured readiness explanations
-- Confidence level on coach recommendations
-- Better mobile layouts
-- Local storage / Supabase persistence
-- Export all data
-- Import data
-
-## P2: Nice-to-Have
-
-These improve polish but should not delay MVP.
-
-- XP animations
-- Theme customization
-- Notification reminders
-- Calendar heatmap
-- Searchable coach journal
-- Milestone celebration animations
-- Better onboarding
-- Demo mode with fake data
-
-## Future Vision
-
-These belong after the first campaign is stable.
-
-- Strength training module
-- Conditioning module
-- Nutrition module
-- Sleep/wearable integrations
-- Physiotherapist portal
-- Apple Health / Garmin integration
-- Hockey readiness module
-- Golf performance module
-- AI coach integration
-- Evidence library
-- Multi-athlete support
+- Trend charts.
+- Training log.
+- Strength progressions.
+- Sport confidence tracking.
+- Return-to-skating module.
+- Wearables integration.

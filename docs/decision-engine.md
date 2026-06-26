@@ -1,178 +1,122 @@
 # Decision Engine
 
-Version: 1.0
-Owner: Kevin Sauvageau
-Product: Project Phoenix OS
+Version: 1.1  
+Owner: Kevin Sauvageau  
+Product: Project Phoenix OS  
 Status: Living Document
 
 ## Purpose
 
-The Decision Engine defines the logic Project Phoenix uses to support progression decisions.
+The decision engine translates check-in data into readiness, quests, small wins, and coach packet context.
 
-It should not make autonomous medical decisions. It should organize evidence and produce transparent recommendations.
+It should be transparent, rule-based, and conservative.
 
-## Decision States
+The app does not make medical decisions. It organizes evidence.
 
-### Green: Ready
+## Core Principles
 
-Proceed as planned.
+1. The calendar does not promote the athlete. Evidence does.
+2. Absolute symptoms matter, but symptom response matters more.
+3. Surgical baseline swelling is not the same as activity-induced swelling.
+4. Readiness should be phase-aware.
+5. Quests should be generated from the current phase, active tracks, current check-in, previous response, and clinician constraints.
 
-Typical evidence:
+## Readiness States
 
-- Pain in green zone
-- Swelling stable or improving
-- Walking confidence stable or improving
-- No negative next-day response
-- Current mission criteria being met
+### Ready
 
-### Yellow: Modify
+Low symptoms, stable or improving trend, and no negative response to previous activity.
 
-Proceed with caution or reduce workload.
+### Modify
 
-Typical evidence:
+Symptoms are present, expected, or moderately elevated, but activity can continue in a controlled way.
 
-- Pain in yellow zone
-- Swelling slightly increased
-- Walking confidence decreased
-- Extension or flexion worsened
-- Fatigue or sleep issues present
+Example: Day 1 post-op swelling 5/10 with pain 2/10 and walking confidence 3/5 should usually be Modify, not Recover, if there is no evidence that activity caused worsening.
 
-### Red: Recover
+### Recover
 
-Back off and prioritize recovery.
+Meaningful worsening, high pain, major swelling response, reduced walking/movement quality, instability, or concerning symptoms.
 
-Typical evidence:
+## Swelling Logic
 
-- Pain in orange/red zone
-- Swelling significantly increased
-- Limp returned or worsened
-- Loss of ROM
-- Mechanical symptoms
-- Concerning calf symptoms
-- Clinician warning signs
+Track three concepts:
 
-## Core Rules
+```ts
+swellingLevel: 0-10
+swellingTrend: 'improved' | 'stable' | 'worse' | 'unknown'
+swellingContext: 'surgical_baseline' | 'activity_response' | 'unknown'
+```
 
-### Rule 1: Next-day response matters most
+Early post-op rules:
 
-If the athlete performed a session yesterday and today shows worse pain, worse swelling, worse walking confidence, or worse ROM, do not progress.
+- Recovery day 0-3, swelling 4-6/10, pain <=3, walking confidence >=3, and no activity-induced worsening => Modify.
+- Swelling increase of +2 or more after activity => Recover or reduce next workload.
+- Swelling paired with higher pain and worse walking quality => Recover.
 
-Decision: Hold, modify, or deload.
+## ROM Logic
 
-### Rule 2: Stable swelling is required for progression
+ROM includes both:
 
-If swelling increases meaningfully, do not progress lower-body loading.
+- extension
+- flexion
 
-Decision: Prioritize swelling control and ROM quality.
+Extension should be tracked in practical home bands:
 
-### Rule 3: Pain alone is not enough
+- neutral / 0 degrees
+- slightly limited / about 5 degrees
+- moderately limited / about 10 degrees
+- significantly limited / 15+ degrees
+- not tested
 
-Low pain does not automatically mean readiness.
+Flexion can be tracked in degrees when available, but the app should also record comfort and symptom response.
 
-Readiness also requires:
+Gentle ROM can run in parallel with activation work. The athlete does not need to fully complete quad activation before beginning gentle flexion exposure if it is tolerated and clinically allowed.
 
-- Movement quality
-- Swelling control
-- ROM stability
-- Confidence
-- Previous-day tolerance
+## Quest Generation
 
-### Rule 4: Green pain with poor movement is not green readiness
+Quest generation inputs:
 
-If pain is low but walking confidence is poor or the athlete is compensating, do not treat the day as fully green.
+- recovery day
+- phase
+- active tracks
+- morning check-in
+- previous evening response
+- current mission(s)
+- clinician constraints
 
-Decision: Modify.
+Day 0 example main quests:
 
-### Rule 5: Orange pain changes the plan
+- ankle pumps
+- assisted walking practice
+- gentle quad activation check
+- swelling control / comfortable elevation
+- evening check-in
 
-If pain reaches 5/10 or higher during an activity, modify or stop.
+Day 1 example main quests:
 
-Decision: Reduce load, volume, range, or complexity.
+- morning check-in
+- ankle pumps throughout day
+- short walking practice with crutch support as needed
+- quad activation sets
+- gentle heel prop 3-5 min if tolerated
+- gentle heel slides 1-2 sets of 10 if tolerated
+- evening check-in
 
-### Rule 6: Trend beats snapshot
+## Small Wins
 
-A single good number is less important than a stable trend.
+Small wins should be rule-based first and manually editable.
 
-Progression is stronger when improvement repeats across several check-ins.
+Do not require AI.
 
-### Rule 7: Extension has priority early
+Examples:
 
-If extension is worsening or not progressing, prioritize extension and swelling control before adding more strengthening complexity.
+- pain decreased versus previous check-in
+- swelling stayed stable after activity
+- walking confidence improved
+- quad activation improved
+- extension status moved closer to neutral
+- flexion improved without symptom increase
+- all main quests completed
+- user logged a smart decision to back off
 
-### Rule 8: Confidence matters, but does not overrule evidence
-
-The athlete’s confidence is useful context.
-
-However, confidence alone does not unlock progression.
-
-## Example Decision Logic
-
-### Eligible to progress
-
-IF:
-
-- Pain <= 2
-- Swelling <= 2 and not increasing
-- Walking Confidence >= 3
-- Previous evening response is neutral or positive
-- No worsening ROM
-
-THEN:
-
-- Recommendation: Green / proceed as planned
-- Progression may be considered
-
-### Hold current workload
-
-IF:
-
-- Pain is stable
-- Swelling is stable
-- Movement quality is acceptable
-- But milestone criteria are not yet met
-
-THEN:
-
-- Recommendation: Hold
-- Continue current plan
-
-### Modify workload
-
-IF:
-
-- Pain is 3-4
-- Or swelling increased slightly
-- Or walking confidence dropped by 1
-- Or sleep was poor
-
-THEN:
-
-- Recommendation: Yellow / modify
-- Reduce workload or avoid progression
-
-### Recover / back off
-
-IF:
-
-- Pain >= 5
-- Or swelling increased significantly
-- Or walking worsened noticeably
-- Or ROM worsened materially
-- Or mechanical symptoms are present
-
-THEN:
-
-- Recommendation: Red / recover
-- Consider contacting physio depending on severity
-
-## Recommendation Format
-
-Each recommendation should include:
-
-- Status: Green / Yellow / Red
-- Label: Ready / Modify / Recover
-- Today’s priority
-- Workload recommendation
-- Reason
-- Next reassessment
-- Confidence: High / Medium / Low
+Only one primary win should appear on the dashboard.

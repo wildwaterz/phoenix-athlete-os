@@ -74,6 +74,40 @@ export interface JournalEntry {
   nextFocus: string;
 }
 
+export type QuestKind = "main" | "side";
+
+export type QuestSource =
+  | "post-op-default"
+  | "date"
+  | "mission"
+  | "morning-check-in"
+  | "previous-evening"
+  | "clinician-constraint"
+  | "baseline";
+
+export interface DailyQuest {
+  id: string;
+  date: string;
+  label: string;
+  done: boolean;
+  xp: number;
+  kind: QuestKind;
+  source: QuestSource;
+  reason: string;
+}
+
+export interface ClinicianConstraint {
+  id: string;
+  label: string;
+  reason?: string;
+  active?: boolean;
+  kind?: QuestKind;
+  xp?: number;
+  questLabel?: string;
+  blockedQuestIds?: string[];
+  blockedLabelIncludes?: string[];
+}
+
 export interface PhoenixState {
   currentMissionId: MissionId;
   recoveryIqXp: number; // total xp
@@ -82,7 +116,9 @@ export interface PhoenixState {
   history: { morning: MorningCheckIn[]; evening: EveningCheckIn[] };
   milestones: Milestone[];
   journal: JournalEntry[];
-  todayQuests: { id: string; label: string; done: boolean; xp: number; kind: "main" | "side" }[];
+  todayQuests: DailyQuest[];
+  questCompletions?: Record<string, Record<string, boolean>>;
+  clinicianConstraints?: ClinicianConstraint[];
   todayRecommendation: {
     priority: string;
     workload: string;
@@ -257,16 +293,6 @@ const seedJournal: JournalEntry[] = [
   },
 ];
 
-const seedQuests = [
-  { id: "q1", label: "Morning check-in", done: true, xp: 10, kind: "main" as const },
-  { id: "q2", label: "Quad activation set ×3", done: true, xp: 15, kind: "main" as const },
-  { id: "q3", label: "Heel-prop extension 10 min", done: false, xp: 20, kind: "main" as const },
-  { id: "q5", label: "Evening check-in", done: false, xp: 10, kind: "main" as const },
-  { id: "q4", label: "Protein target hit", done: false, xp: 10, kind: "side" as const },
-  { id: "q6", label: "10-min mobility flow", done: false, xp: 5, kind: "side" as const },
-  { id: "q7", label: "8h sleep window", done: false, xp: 5, kind: "side" as const },
-];
-
 // Seed prior morning check-ins so trends and historical viewing work.
 function isoDaysAgo(n: number): string {
   const d = new Date();
@@ -373,7 +399,9 @@ const initial: PhoenixState = {
   history: { morning: seedMorningHistory, evening: [] },
   milestones: seedMilestones,
   journal: seedJournal,
-  todayQuests: seedQuests,
+  todayQuests: [],
+  questCompletions: {},
+  clinicianConstraints: [],
   todayRecommendation: {
     priority: "Reinforce quad activation under low fatigue.",
     workload: "Hold yesterday's volume. Add 3× terminal knee extension holds.",
@@ -475,6 +503,501 @@ export function previousMorning(s: PhoenixState, isoDate: string): MorningCheckI
     .filter((m) => m.date < isoDate)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
   return all[0] ?? null;
+}
+
+export function previousEvening(s: PhoenixState, isoDate: string): EveningCheckIn | null {
+  const all = allEveningCheckIns(s)
+    .filter((e) => e.date < isoDate)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  return all[0] ?? null;
+}
+
+type QuestDraft = Omit<DailyQuest, "date" | "done">;
+
+function quest(
+  id: string,
+  label: string,
+  kind: QuestKind,
+  xp: number,
+  source: QuestSource,
+  reason: string,
+): QuestDraft {
+  return { id, label, kind, xp, source, reason };
+}
+
+function addQuest(quests: QuestDraft[], next: QuestDraft) {
+  const existingIndex = quests.findIndex((q) => q.id === next.id);
+  if (existingIndex === -1) {
+    quests.push(next);
+    return;
+  }
+
+  const existing = quests[existingIndex];
+  quests[existingIndex] = {
+    ...existing,
+    ...next,
+    kind: existing.kind === "main" ? "main" : next.kind,
+    xp: Math.max(existing.xp, next.xp),
+  };
+}
+
+function postOpDefaultQuests(day: 0 | 1): QuestDraft[] {
+  const reason = `Because this is Day ${day} post-op`;
+
+  if (day === 0) {
+    return [
+      quest("day-0-ankle-pumps", "Ankle pumps", "main", 10, "post-op-default", reason),
+      quest(
+        "day-0-assisted-walking",
+        "Assisted walking practice",
+        "main",
+        15,
+        "post-op-default",
+        reason,
+      ),
+      quest(
+        "day-0-quad-check",
+        "Gentle quad activation check",
+        "main",
+        10,
+        "post-op-default",
+        reason,
+      ),
+      quest(
+        "day-0-swelling-control",
+        "Swelling control / comfortable elevation",
+        "main",
+        15,
+        "post-op-default",
+        reason,
+      ),
+      quest("evening-check-in", "Evening check-in", "main", 10, "post-op-default", reason),
+      quest("protein-target", "Protein target", "side", 10, "post-op-default", reason),
+      quest("hydration", "Hydration", "side", 5, "post-op-default", reason),
+      quest("day-0-sleep-setup", "Sleep setup", "side", 5, "post-op-default", reason),
+      quest(
+        "avoid-aggressive-rom-testing",
+        "Avoid aggressive ROM testing",
+        "side",
+        5,
+        "post-op-default",
+        reason,
+      ),
+    ];
+  }
+
+  return [
+    quest("morning-check-in", "Morning check-in", "main", 10, "post-op-default", reason),
+    quest("day-1-ankle-pumps", "Ankle pumps throughout day", "main", 10, "post-op-default", reason),
+    quest(
+      "day-1-walking-practice",
+      "Short walking practice with crutch support as needed",
+      "main",
+      15,
+      "post-op-default",
+      reason,
+    ),
+    quest("day-1-quad-activation", "Quad activation sets", "main", 15, "post-op-default", reason),
+    quest(
+      "day-1-gentle-heel-prop",
+      "Gentle heel prop 3–5 min, only if tolerated",
+      "main",
+      15,
+      "post-op-default",
+      reason,
+    ),
+    quest("evening-check-in", "Evening check-in", "main", 10, "post-op-default", reason),
+    quest("protein-target", "Protein target", "side", 10, "post-op-default", reason),
+    quest("hydration", "Hydration", "side", 5, "post-op-default", reason),
+    quest(
+      "day-1-ice-elevation",
+      "Ice/elevation if swelling increases",
+      "side",
+      5,
+      "post-op-default",
+      reason,
+    ),
+    quest("sleep-window", "Sleep window", "side", 5, "post-op-default", reason),
+  ];
+}
+
+function previousEveningWasReactive(e: EveningCheckIn | null): boolean {
+  if (!e) return false;
+  return e.painAfter >= 5 || e.swellingChange > 0 || e.walkingConfidence <= 2;
+}
+
+function previousEveningWasStable(e: EveningCheckIn | null): boolean {
+  if (!e) return false;
+  return e.painAfter <= 3 && e.swellingChange <= 0 && e.walkingConfidence >= 3;
+}
+
+function extensionQuestLabel(morning: MorningCheckIn | null, previous: EveningCheckIn | null) {
+  if (!morning) return "Extension exposure 3–5 min, only if tolerated";
+  if (morning.pain > 3 || morning.swelling >= 3 || previousEveningWasReactive(previous)) {
+    return "Gentle heel prop 3–5 min, only if tolerated";
+  }
+  return "Extension exposure 5–8 min, only if tolerated";
+}
+
+function addMissionQuests(
+  quests: QuestDraft[],
+  mission: Mission,
+  morning: MorningCheckIn | null,
+  previous: EveningCheckIn | null,
+) {
+  const stable = previousEveningWasStable(previous);
+  const source: QuestSource = stable ? "previous-evening" : "mission";
+  const reason = stable
+    ? "Because yesterday's response was stable"
+    : `Because the current mission is ${mission.name}`;
+
+  switch (mission.id) {
+    case "calm-the-knee":
+      addQuest(
+        quests,
+        quest(
+          "swelling-control",
+          "Swelling control / comfortable elevation",
+          "main",
+          15,
+          source,
+          reason,
+        ),
+      );
+      addQuest(
+        quests,
+        quest("comfortable-walking", "Comfortable walking practice", "main", 15, source, reason),
+      );
+      break;
+    case "wake-the-quad":
+      addQuest(
+        quests,
+        quest("quad-activation", "Quad activation sets", "main", 15, source, reason),
+      );
+      addQuest(
+        quests,
+        quest(
+          "walking-practice",
+          "Short walking practice with support as needed",
+          "main",
+          15,
+          source,
+          reason,
+        ),
+      );
+      break;
+    case "restore-extension":
+      addQuest(
+        quests,
+        quest(
+          "extension-exposure",
+          extensionQuestLabel(morning, previous),
+          "main",
+          20,
+          source,
+          reason,
+        ),
+      );
+      addQuest(
+        quests,
+        quest("quad-activation", "Quad activation sets", "main", 15, "mission", reason),
+      );
+      break;
+    case "build-capacity":
+      addQuest(
+        quests,
+        quest("capacity-walk", "Low-impact capacity walk", "main", 20, source, reason),
+      );
+      addQuest(
+        quests,
+        quest("strength-tolerance", "Strength tolerance session", "main", 20, source, reason),
+      );
+      break;
+    case "become-an-athlete-again":
+      addQuest(quests, quest("readiness-scan", "Sport readiness scan", "main", 15, source, reason));
+      addQuest(
+        quests,
+        quest(
+          "controlled-conditioning",
+          "Controlled conditioning exposure",
+          "main",
+          20,
+          source,
+          reason,
+        ),
+      );
+      break;
+  }
+}
+
+function addMorningSignalQuests(
+  quests: QuestDraft[],
+  morning: MorningCheckIn | null,
+  previous: EveningCheckIn | null,
+) {
+  if (!morning) return;
+
+  if (morning.pain >= 5 || morning.swelling >= 5) {
+    addQuest(
+      quests,
+      quest(
+        "recovery-priority",
+        "Recovery priority: comfort, swelling control, and easy movement",
+        "main",
+        20,
+        "morning-check-in",
+        morning.swelling >= 5 ? "Because swelling is elevated" : "Because pain is elevated",
+      ),
+    );
+  }
+
+  if (morning.swelling >= 3) {
+    addQuest(
+      quests,
+      quest(
+        "swelling-control",
+        "Swelling control / comfortable elevation",
+        "main",
+        15,
+        "morning-check-in",
+        "Because swelling is elevated",
+      ),
+    );
+  }
+
+  if (morning.quadActivation < 4) {
+    addQuest(
+      quests,
+      quest(
+        "quad-activation",
+        "Quad activation sets",
+        "main",
+        15,
+        "morning-check-in",
+        "Because quad activation is below 4/5",
+      ),
+    );
+  }
+
+  if (morning.walkingConfidence <= 2) {
+    addQuest(
+      quests,
+      quest(
+        "supported-walking",
+        "Supported walking practice",
+        "main",
+        15,
+        "morning-check-in",
+        "Because walking confidence is low",
+      ),
+    );
+  }
+
+  if (morning.extension > 2 && morning.pain < 5 && morning.swelling < 5) {
+    addQuest(
+      quests,
+      quest(
+        "extension-exposure",
+        extensionQuestLabel(morning, previous),
+        "main",
+        20,
+        "morning-check-in",
+        `Because extension is ${morning.extension}° from neutral`,
+      ),
+    );
+  }
+
+  if (morning.sleepHours < 7) {
+    addQuest(
+      quests,
+      quest(
+        "sleep-window",
+        "Sleep window",
+        "side",
+        5,
+        "morning-check-in",
+        "Because last night's sleep was short",
+      ),
+    );
+  }
+}
+
+function addPreviousEveningQuests(quests: QuestDraft[], previous: EveningCheckIn | null) {
+  if (!previousEveningWasReactive(previous)) return;
+  addQuest(
+    quests,
+    quest(
+      "hold-volume",
+      "Hold volume; keep work gentle",
+      "main",
+      15,
+      "previous-evening",
+      "Because yesterday's response was reactive",
+    ),
+  );
+  addQuest(
+    quests,
+    quest(
+      "ice-elevation",
+      "Ice/elevation if swelling increases",
+      "side",
+      5,
+      "previous-evening",
+      "Because yesterday's response was reactive",
+    ),
+  );
+}
+
+function addBaselineQuests(quests: QuestDraft[], isoDate: string, morning: MorningCheckIn | null) {
+  addQuest(
+    quests,
+    quest(
+      "morning-check-in",
+      "Morning check-in",
+      "main",
+      10,
+      "date",
+      `Because ${isoDate} needs a morning baseline`,
+    ),
+  );
+  addQuest(
+    quests,
+    quest(
+      "evening-check-in",
+      "Evening check-in",
+      "main",
+      10,
+      "date",
+      `Because ${isoDate} needs an evening response`,
+    ),
+  );
+  addQuest(
+    quests,
+    quest(
+      "protein-target",
+      "Protein target",
+      "side",
+      10,
+      "baseline",
+      morning
+        ? `Because today's target is ${morning.proteinTargetG}g`
+        : "Because nutrition supports recovery",
+    ),
+  );
+  addQuest(
+    quests,
+    quest("hydration", "Hydration", "side", 5, "baseline", "Because hydration supports recovery"),
+  );
+  addQuest(
+    quests,
+    quest(
+      "sleep-window",
+      "Sleep window",
+      "side",
+      5,
+      "baseline",
+      "Because sleep supports tomorrow's response",
+    ),
+  );
+}
+
+function clinicianConstraintBlocksQuest(quest: QuestDraft, constraint: ClinicianConstraint) {
+  const blockedIds = constraint.blockedQuestIds ?? [];
+  const blockedLabels = constraint.blockedLabelIncludes ?? [];
+  return (
+    blockedIds.includes(quest.id) ||
+    blockedLabels.some((label) => quest.label.toLowerCase().includes(label.toLowerCase()))
+  );
+}
+
+function applyClinicianConstraints(
+  quests: QuestDraft[],
+  constraints: ClinicianConstraint[] = [],
+): QuestDraft[] {
+  const activeConstraints = constraints.filter((constraint) => constraint.active !== false);
+  const allowedQuests = quests.filter(
+    (quest) =>
+      !activeConstraints.some((constraint) => clinicianConstraintBlocksQuest(quest, constraint)),
+  );
+
+  activeConstraints.forEach((constraint) => {
+    addQuest(
+      allowedQuests,
+      quest(
+        `clinician-${constraint.id}`,
+        constraint.questLabel ?? `Follow clinician guidance: ${constraint.label}`,
+        constraint.kind ?? "main",
+        constraint.xp ?? 0,
+        "clinician-constraint",
+        constraint.reason ?? "Because clinician constraints are present",
+      ),
+    );
+  });
+
+  return allowedQuests;
+}
+
+export function generateDailyQuestPlan(s: PhoenixState, isoDate = todayIso()): QuestDraft[] {
+  const day = daysPostOp(s, isoDate);
+  const morning = getMorningForDate(s, isoDate);
+  const priorEvening = previousEvening(s, isoDate);
+  const constraints = s.clinicianConstraints ?? [];
+
+  if (day <= 1) {
+    const quests = postOpDefaultQuests(day as 0 | 1);
+    return applyClinicianConstraints(quests, constraints);
+  }
+
+  const quests: QuestDraft[] = [];
+  addBaselineQuests(quests, isoDate, morning);
+  addMissionQuests(quests, currentMission(s), morning, priorEvening);
+  addMorningSignalQuests(quests, morning, priorEvening);
+  addPreviousEveningQuests(quests, priorEvening);
+  return applyClinicianConstraints(quests, constraints);
+}
+
+const LEGACY_QUEST_ID_ALIASES: Record<string, string[]> = {
+  "morning-check-in": ["q1"],
+  "quad-activation": ["q2"],
+  "day-1-quad-activation": ["q2"],
+  "extension-exposure": ["q3"],
+  "day-1-gentle-heel-prop": ["q3"],
+  "evening-check-in": ["q5"],
+  "protein-target": ["q4"],
+  "sleep-window": ["q7"],
+};
+
+function storedCompletionForQuest(
+  s: PhoenixState,
+  isoDate: string,
+  quest: QuestDraft,
+): boolean | null {
+  const completions = s.questCompletions?.[isoDate];
+  if (completions && Object.prototype.hasOwnProperty.call(completions, quest.id)) {
+    return completions[quest.id];
+  }
+
+  if (isoDate !== todayIso()) return null;
+
+  const ids = [quest.id, ...(LEGACY_QUEST_ID_ALIASES[quest.id] ?? [])];
+  const saved = s.todayQuests.find((q) => ids.includes(q.id) || q.label === quest.label);
+  return saved ? saved.done : null;
+}
+
+function questDoneForDate(s: PhoenixState, isoDate: string, quest: QuestDraft): boolean {
+  const stored = storedCompletionForQuest(s, isoDate, quest);
+  if (stored !== null) return stored;
+  if (quest.id === "morning-check-in") return Boolean(getMorningForDate(s, isoDate));
+  if (quest.id === "evening-check-in") return Boolean(getEveningForDate(s, isoDate));
+  return false;
+}
+
+export function dailyQuestsForDate(s: PhoenixState, isoDate = todayIso()): DailyQuest[] {
+  return generateDailyQuestPlan(s, isoDate).map((quest) => ({
+    ...quest,
+    date: isoDate,
+    done: questDoneForDate(s, isoDate, quest),
+  }));
 }
 
 export type Trend = "up" | "down" | "flat" | "none";

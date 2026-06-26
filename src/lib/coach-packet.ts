@@ -1,6 +1,7 @@
 import type { PhoenixState } from "./phoenix-data";
 import {
   currentMission,
+  dailyQuestsForDate,
   getEveningForDate,
   getMorningForDate,
   levelFromXp,
@@ -19,6 +20,7 @@ export function buildPacketJson(kind: PacketKind, s: PhoenixState, isoDate = tod
   const previous = previousMorning(s, isoDate);
   const readiness = readinessFor(morning);
   const lastJournal = s.journal[0];
+  const dailyQuests = dailyQuestsForDate(s, isoDate);
   return {
     kind,
     date: isoDate,
@@ -44,8 +46,16 @@ export function buildPacketJson(kind: PacketKind, s: PhoenixState, isoDate = tod
       status: m.status,
       unlockedAt: m.unlockedAt ?? null,
     })),
-    completedToday: s.todayQuests.filter((q) => q.done).map((q) => q.label),
-    pendingToday: s.todayQuests.filter((q) => !q.done).map((q) => q.label),
+    dailyQuests: dailyQuests.map((q) => ({
+      date: q.date,
+      label: q.label,
+      done: q.done,
+      kind: q.kind,
+      source: q.source,
+      reason: q.reason,
+    })),
+    completedToday: dailyQuests.filter((q) => q.done).map((q) => q.label),
+    pendingToday: dailyQuests.filter((q) => !q.done).map((q) => q.label),
     coachJournalRecent: s.journal.slice(0, 3),
     questionsForCoach: [
       "Is yesterday's response good enough to add load today?",
@@ -67,6 +77,7 @@ export function buildPacketMarkdown(
   const e = getEveningForDate(s, isoDate);
   const previous = previousMorning(s, isoDate);
   const readiness = readinessFor(m);
+  const dailyQuests = dailyQuestsForDate(s, isoDate);
 
   const lines: string[] = [];
   lines.push(`# Phoenix OS — ${kind === "morning" ? "Morning" : "Evening"} Coach Packet`);
@@ -115,9 +126,9 @@ export function buildPacketMarkdown(
 
   lines.push(`## Today's Work`);
   lines.push(`**Completed**`);
-  s.todayQuests.filter((q) => q.done).forEach((q) => lines.push(`- ✅ ${q.label}`));
+  dailyQuests.filter((q) => q.done).forEach((q) => lines.push(`- ✅ ${q.label} (${q.reason})`));
   lines.push(`**Pending**`);
-  s.todayQuests.filter((q) => !q.done).forEach((q) => lines.push(`- ⬜ ${q.label}`));
+  dailyQuests.filter((q) => !q.done).forEach((q) => lines.push(`- ⬜ ${q.label} (${q.reason})`));
   lines.push("");
 
   lines.push(`## Milestones`);
