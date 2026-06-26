@@ -6,17 +6,22 @@ import { cn } from "@/lib/utils";
 
 export function CoachPacketDialog({
   kind,
+  date,
   onClose,
 }: {
   kind: PacketKind;
+  date: string;
   onClose: () => void;
 }) {
   const s = usePhoenix();
   const [tab, setTab] = useState<"markdown" | "json">("markdown");
   const [copied, setCopied] = useState(false);
 
-  const markdown = useMemo(() => buildPacketMarkdown(kind, s), [kind, s]);
-  const json = useMemo(() => JSON.stringify(buildPacketJson(kind, s), null, 2), [kind, s]);
+  const markdown = useMemo(() => buildPacketMarkdown(kind, s, date), [date, kind, s]);
+  const json = useMemo(
+    () => JSON.stringify(buildPacketJson(kind, s, date), null, 2),
+    [date, kind, s],
+  );
   const content = tab === "markdown" ? markdown : json;
 
   const copy = async () => {
@@ -36,7 +41,7 @@ export function CoachPacketDialog({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `phoenix-${kind}-packet.${tab === "json" ? "json" : "md"}`;
+    a.download = `phoenix-${date}-${kind}-packet.${tab === "json" ? "json" : "md"}`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -49,7 +54,9 @@ export function CoachPacketDialog({
             <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-phoenix">
               Coach Packet
             </div>
-            <div className="text-base font-semibold capitalize">{kind} export</div>
+            <div className="text-base font-semibold capitalize">
+              {kind} export · {date}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -71,7 +78,11 @@ export function CoachPacketDialog({
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {t === "markdown" ? <FileText className="h-3.5 w-3.5" /> : <FileJson className="h-3.5 w-3.5" />}
+                {t === "markdown" ? (
+                  <FileText className="h-3.5 w-3.5" />
+                ) : (
+                  <FileJson className="h-3.5 w-3.5" />
+                )}
                 {t}
               </button>
             ))}

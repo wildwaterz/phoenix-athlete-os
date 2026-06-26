@@ -96,7 +96,9 @@ export interface PhoenixState {
 }
 
 // ---------- seed ----------
-const today = () => new Date().toISOString().slice(0, 10);
+export function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export const MISSIONS: Mission[] = [
   {
@@ -272,10 +274,79 @@ function isoDaysAgo(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+export function createDefaultMorningCheckIn(date: string): MorningCheckIn {
+  return {
+    date,
+    pain: 2,
+    swelling: 1,
+    walkingConfidence: 3,
+    quadActivation: 3,
+    extension: 5,
+    flexion: 110,
+    sleepHours: 7,
+    weightKg: 85,
+    proteinTargetG: 160,
+    confidence: 3,
+    notes: "",
+  };
+}
+
+export function createDefaultEveningCheckIn(date: string): EveningCheckIn {
+  return {
+    date,
+    exercisesCompleted: "",
+    painDuring: 2,
+    painAfter: 2,
+    swellingChange: 0,
+    walkingConfidence: 3,
+    milestones: "",
+    notes: "",
+  };
+}
+
 const seedMorningHistory: MorningCheckIn[] = [
-  { date: isoDaysAgo(3), pain: 4, swelling: 3, walkingConfidence: 2, quadActivation: 2, extension: 7, flexion: 105, sleepHours: 6.5, weightKg: 86, proteinTargetG: 170, confidence: 3, notes: "" },
-  { date: isoDaysAgo(2), pain: 3, swelling: 2, walkingConfidence: 3, quadActivation: 3, extension: 5, flexion: 112, sleepHours: 7,   weightKg: 86, proteinTargetG: 170, confidence: 3, notes: "" },
-  { date: isoDaysAgo(1), pain: 3, swelling: 2, walkingConfidence: 3, quadActivation: 3, extension: 5, flexion: 115, sleepHours: 7,   weightKg: 86, proteinTargetG: 170, confidence: 3, notes: "Yesterday." },
+  {
+    date: isoDaysAgo(3),
+    pain: 4,
+    swelling: 3,
+    walkingConfidence: 2,
+    quadActivation: 2,
+    extension: 7,
+    flexion: 105,
+    sleepHours: 6.5,
+    weightKg: 86,
+    proteinTargetG: 170,
+    confidence: 3,
+    notes: "",
+  },
+  {
+    date: isoDaysAgo(2),
+    pain: 3,
+    swelling: 2,
+    walkingConfidence: 3,
+    quadActivation: 3,
+    extension: 5,
+    flexion: 112,
+    sleepHours: 7,
+    weightKg: 86,
+    proteinTargetG: 170,
+    confidence: 3,
+    notes: "",
+  },
+  {
+    date: isoDaysAgo(1),
+    pain: 3,
+    swelling: 2,
+    walkingConfidence: 3,
+    quadActivation: 3,
+    extension: 5,
+    flexion: 115,
+    sleepHours: 7,
+    weightKg: 86,
+    proteinTargetG: 170,
+    confidence: 3,
+    notes: "Yesterday.",
+  },
 ];
 
 const initial: PhoenixState = {
@@ -285,7 +356,7 @@ const initial: PhoenixState = {
   currentMissionId: "wake-the-quad",
   recoveryIqXp: 1240,
   morning: {
-    date: today(),
+    date: todayIso(),
     pain: 2,
     swelling: 1,
     walkingConfidence: 4,
@@ -392,18 +463,62 @@ export function daysPostOp(s: PhoenixState, isoDate: string): number {
 }
 
 export function getMorningForDate(s: PhoenixState, isoDate: string): MorningCheckIn | null {
-  if (s.morning?.date === isoDate) return s.morning;
-  return s.history.morning.find((m) => m.date === isoDate) ?? null;
+  return allMorningCheckIns(s).find((m) => m.date === isoDate) ?? null;
+}
+
+export function getEveningForDate(s: PhoenixState, isoDate: string): EveningCheckIn | null {
+  return allEveningCheckIns(s).find((e) => e.date === isoDate) ?? null;
 }
 
 export function previousMorning(s: PhoenixState, isoDate: string): MorningCheckIn | null {
-  const all = [...s.history.morning, ...(s.morning ? [s.morning] : [])]
+  const all = allMorningCheckIns(s)
     .filter((m) => m.date < isoDate)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
   return all[0] ?? null;
 }
 
 export type Trend = "up" | "down" | "flat" | "none";
+
+function upsertByDate<T extends { date: string }>(entries: T[], entry: T): T[] {
+  const withoutDate = entries.filter((existing) => existing.date !== entry.date);
+  return [...withoutDate, entry].sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+function dedupeByDate<T extends { date: string }>(entries: T[]): T[] {
+  const byDate = new Map<string, T>();
+  entries.forEach((entry) => byDate.set(entry.date, entry));
+  return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+export function allMorningCheckIns(s: PhoenixState): MorningCheckIn[] {
+  return dedupeByDate([...s.history.morning, ...(s.morning ? [s.morning] : [])]);
+}
+
+export function allEveningCheckIns(s: PhoenixState): EveningCheckIn[] {
+  return dedupeByDate([...s.history.evening, ...(s.evening ? [s.evening] : [])]);
+}
+
+export function saveMorningCheckIn(entry: MorningCheckIn) {
+  setState((prev) => ({
+    ...prev,
+    morning: entry.date === todayIso() ? entry : prev.morning,
+    history: {
+      ...prev.history,
+      morning: upsertByDate(prev.history.morning, entry),
+    },
+  }));
+}
+
+export function saveEveningCheckIn(entry: EveningCheckIn) {
+  setState((prev) => ({
+    ...prev,
+    evening: entry.date === todayIso() ? entry : prev.evening,
+    history: {
+      ...prev.history,
+      evening: upsertByDate(prev.history.evening, entry),
+    },
+  }));
+}
 
 /** direction: "lower-better" (pain, swelling) or "higher-better" (confidence, extension*) */
 export function trendFor(
@@ -456,12 +571,27 @@ export function readinessFor(m: MorningCheckIn | null): Readiness {
 }
 
 export const PRINCIPLES: { title: string; body: string }[] = [
-  { title: "Progression is earned, never assumed.", body: "The calendar does not promote you. Evidence does." },
-  { title: "Recovery is training.", body: "What you do between sessions decides what the next session can be." },
-  { title: "Adaptations matter more than exercises.", body: "The exercise is a stimulus. The adaptation is the point." },
-  { title: "Competency matters more than timelines.", body: "Move when you've earned it — not when the protocol says so." },
+  {
+    title: "Progression is earned, never assumed.",
+    body: "The calendar does not promote you. Evidence does.",
+  },
+  {
+    title: "Recovery is training.",
+    body: "What you do between sessions decides what the next session can be.",
+  },
+  {
+    title: "Adaptations matter more than exercises.",
+    body: "The exercise is a stimulus. The adaptation is the point.",
+  },
+  {
+    title: "Competency matters more than timelines.",
+    body: "Move when you've earned it — not when the protocol says so.",
+  },
   { title: "Evidence beats ego.", body: "What the data says wins over what you want to be true." },
-  { title: "Tomorrow's response matters more than today's workout.", body: "If today breaks tomorrow, today wasn't a win." },
+  {
+    title: "Tomorrow's response matters more than today's workout.",
+    body: "If today breaks tomorrow, today wasn't a win.",
+  },
 ];
 
 export function principleForDate(isoDate: string) {
@@ -470,11 +600,20 @@ export function principleForDate(isoDate: string) {
 }
 
 export const PHASE_PRINCIPLES: { title: string; body: string }[] = [
-  { title: "Recovery is training.", body: "What you do between sessions decides what the next session can be." },
-  { title: "Progression is earned, never assumed.", body: "The calendar does not promote you. Evidence does." },
+  {
+    title: "Recovery is training.",
+    body: "What you do between sessions decides what the next session can be.",
+  },
+  {
+    title: "Progression is earned, never assumed.",
+    body: "The calendar does not promote you. Evidence does.",
+  },
   { title: "Load builds capacity.", body: "Tissue tolerates what you teach it to tolerate." },
   { title: "Consistency beats intensity.", body: "Stacked good days compound. Heroic ones don't." },
-  { title: "Performance is earned.", body: "Return-to-sport is a test you pass, not a date you hit." },
+  {
+    title: "Performance is earned.",
+    body: "Return-to-sport is a test you pass, not a date you hit.",
+  },
 ];
 
 export function principleForPhase(phaseN: number) {

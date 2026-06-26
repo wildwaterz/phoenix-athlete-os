@@ -1,9 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, PageHeader, Surface } from "@/components/app-shell";
-import { setState, usePhoenix } from "@/lib/phoenix-data";
+import {
+  createDefaultEveningCheckIn,
+  createDefaultMorningCheckIn,
+  getEveningForDate,
+  getMorningForDate,
+  saveEveningCheckIn,
+  saveMorningCheckIn,
+  todayIso,
+  usePhoenix,
+} from "@/lib/phoenix-data";
 import { useState } from "react";
 import { CoachPacketDialog } from "@/components/coach-packet-dialog";
-import { Download } from "lucide-react";
+import { CalendarDays, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/check-in")({
@@ -97,38 +106,22 @@ function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
 
 function CheckInPage() {
   const s = usePhoenix();
+  const today = todayIso();
+  const [selectedDate, setSelectedDate] = useState(today);
   const [tab, setTab] = useState<"morning" | "evening">("morning");
   const [packetOpen, setPacketOpen] = useState<null | "morning" | "evening">(null);
 
-  const m = s.morning ?? {
-    date: new Date().toISOString().slice(0, 10),
-    pain: 2,
-    swelling: 1,
-    walkingConfidence: 3,
-    quadActivation: 3,
-    extension: 5,
-    flexion: 110,
-    sleepHours: 7,
-    weightKg: 85,
-    proteinTargetG: 160,
-    confidence: 3,
-    notes: "",
-  };
-  const e = s.evening ?? {
-    date: new Date().toISOString().slice(0, 10),
-    exercisesCompleted: "",
-    painDuring: 2,
-    painAfter: 2,
-    swellingChange: 0,
-    walkingConfidence: 3,
-    milestones: "",
-    notes: "",
-  };
+  const savedMorning = getMorningForDate(s, selectedDate);
+  const savedEvening = getEveningForDate(s, selectedDate);
+  const m = savedMorning ?? createDefaultMorningCheckIn(selectedDate);
+  const e = savedEvening ?? createDefaultEveningCheckIn(selectedDate);
+  const hasMorning = Boolean(savedMorning);
+  const hasEvening = Boolean(savedEvening);
 
   const updateMorning = (patch: Partial<typeof m>) =>
-    setState((prev) => ({ ...prev, morning: { ...m, ...patch } }));
+    saveMorningCheckIn({ ...m, ...patch, date: selectedDate });
   const updateEvening = (patch: Partial<typeof e>) =>
-    setState((prev) => ({ ...prev, evening: { ...e, ...patch } }));
+    saveEveningCheckIn({ ...e, ...patch, date: selectedDate });
 
   return (
     <AppShell>
@@ -137,6 +130,38 @@ function CheckInPage() {
         title="Daily Check-In"
         description="Two checkpoints per day. Data drives progression — not how you feel about today."
       />
+
+      <Surface className="mb-4 p-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <CalendarDays className="h-4 w-4 text-phoenix" />
+              Check-in date
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {hasMorning || hasEvening ? "Saved on this device." : "No entry yet for this date."}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={selectedDate}
+              max={today}
+              onChange={(event) => setSelectedDate(event.target.value || today)}
+              className="rounded-xl border border-border bg-background/40 px-3 py-2 text-sm outline-none focus:border-phoenix"
+            />
+            {selectedDate !== today && (
+              <button
+                type="button"
+                onClick={() => setSelectedDate(today)}
+                className="rounded-xl border border-border bg-background/40 px-3 py-2 text-sm text-muted-foreground transition hover:text-foreground"
+              >
+                Today
+              </button>
+            )}
+          </div>
+        </div>
+      </Surface>
 
       <div className="mb-4 inline-flex rounded-xl border border-border bg-card p-1">
         {(["morning", "evening"] as const).map((t) => (
@@ -159,38 +184,84 @@ function CheckInPage() {
         <Surface>
           <div className="grid gap-5 md:grid-cols-2">
             <Field label="Pain" hint="0 none — 10 worst">
-              <Slider value={m.pain} onChange={(v) => updateMorning({ pain: v })} min={0} max={10} />
+              <Slider
+                value={m.pain}
+                onChange={(v) => updateMorning({ pain: v })}
+                min={0}
+                max={10}
+              />
             </Field>
             <Field label="Swelling" hint="0 none — 10 severe">
-              <Slider value={m.swelling} onChange={(v) => updateMorning({ swelling: v })} min={0} max={10} />
+              <Slider
+                value={m.swelling}
+                onChange={(v) => updateMorning({ swelling: v })}
+                min={0}
+                max={10}
+              />
             </Field>
             <Field label="Walking confidence" hint="1 — 5">
-              <Slider value={m.walkingConfidence} onChange={(v) => updateMorning({ walkingConfidence: v })} min={1} max={5} />
+              <Slider
+                value={m.walkingConfidence}
+                onChange={(v) => updateMorning({ walkingConfidence: v })}
+                min={1}
+                max={5}
+              />
             </Field>
             <Field label="Quad activation" hint="1 — 5">
-              <Slider value={m.quadActivation} onChange={(v) => updateMorning({ quadActivation: v })} min={1} max={5} />
+              <Slider
+                value={m.quadActivation}
+                onChange={(v) => updateMorning({ quadActivation: v })}
+                min={1}
+                max={5}
+              />
             </Field>
             <Field label="Extension (° from neutral)">
-              <NumberInput value={m.extension} onChange={(ev) => updateMorning({ extension: Number(ev.target.value) })} />
+              <NumberInput
+                value={m.extension}
+                onChange={(ev) => updateMorning({ extension: Number(ev.target.value) })}
+              />
             </Field>
             <Field label="Flexion (°)">
-              <NumberInput value={m.flexion} onChange={(ev) => updateMorning({ flexion: Number(ev.target.value) })} />
+              <NumberInput
+                value={m.flexion}
+                onChange={(ev) => updateMorning({ flexion: Number(ev.target.value) })}
+              />
             </Field>
             <Field label="Sleep (hours)">
-              <NumberInput step="0.1" value={m.sleepHours} onChange={(ev) => updateMorning({ sleepHours: Number(ev.target.value) })} />
+              <NumberInput
+                step="0.1"
+                value={m.sleepHours}
+                onChange={(ev) => updateMorning({ sleepHours: Number(ev.target.value) })}
+              />
             </Field>
             <Field label="Weight (kg)">
-              <NumberInput step="0.1" value={m.weightKg} onChange={(ev) => updateMorning({ weightKg: Number(ev.target.value) })} />
+              <NumberInput
+                step="0.1"
+                value={m.weightKg}
+                onChange={(ev) => updateMorning({ weightKg: Number(ev.target.value) })}
+              />
             </Field>
             <Field label="Protein target (g)">
-              <NumberInput value={m.proteinTargetG} onChange={(ev) => updateMorning({ proteinTargetG: Number(ev.target.value) })} />
+              <NumberInput
+                value={m.proteinTargetG}
+                onChange={(ev) => updateMorning({ proteinTargetG: Number(ev.target.value) })}
+              />
             </Field>
             <Field label="Confidence in knee" hint="1 — 5">
-              <Slider value={m.confidence} onChange={(v) => updateMorning({ confidence: v })} min={1} max={5} />
+              <Slider
+                value={m.confidence}
+                onChange={(v) => updateMorning({ confidence: v })}
+                min={1}
+                max={5}
+              />
             </Field>
             <div className="md:col-span-2">
               <Field label="Morning notes">
-                <TextArea value={m.notes} onChange={(ev) => updateMorning({ notes: ev.target.value })} placeholder="Anything you want the coach to see." />
+                <TextArea
+                  value={m.notes}
+                  onChange={(ev) => updateMorning({ notes: ev.target.value })}
+                  placeholder="Anything you want the coach to see."
+                />
               </Field>
             </div>
           </div>
@@ -209,29 +280,60 @@ function CheckInPage() {
           <div className="grid gap-5 md:grid-cols-2">
             <div className="md:col-span-2">
               <Field label="Exercises completed">
-                <TextArea value={e.exercisesCompleted} onChange={(ev) => updateEvening({ exercisesCompleted: ev.target.value })} placeholder="What you actually did — sets, reps, load." />
+                <TextArea
+                  value={e.exercisesCompleted}
+                  onChange={(ev) => updateEvening({ exercisesCompleted: ev.target.value })}
+                  placeholder="What you actually did — sets, reps, load."
+                />
               </Field>
             </div>
             <Field label="Pain during activity">
-              <Slider value={e.painDuring} onChange={(v) => updateEvening({ painDuring: v })} min={0} max={10} />
+              <Slider
+                value={e.painDuring}
+                onChange={(v) => updateEvening({ painDuring: v })}
+                min={0}
+                max={10}
+              />
             </Field>
             <Field label="Pain after activity">
-              <Slider value={e.painAfter} onChange={(v) => updateEvening({ painAfter: v })} min={0} max={10} />
+              <Slider
+                value={e.painAfter}
+                onChange={(v) => updateEvening({ painAfter: v })}
+                min={0}
+                max={10}
+              />
             </Field>
             <Field label="Swelling change" hint="-3 down to +3 up">
-              <Slider value={e.swellingChange} onChange={(v) => updateEvening({ swellingChange: v })} min={-3} max={3} />
+              <Slider
+                value={e.swellingChange}
+                onChange={(v) => updateEvening({ swellingChange: v })}
+                min={-3}
+                max={3}
+              />
             </Field>
             <Field label="Walking confidence" hint="1 — 5">
-              <Slider value={e.walkingConfidence} onChange={(v) => updateEvening({ walkingConfidence: v })} min={1} max={5} />
+              <Slider
+                value={e.walkingConfidence}
+                onChange={(v) => updateEvening({ walkingConfidence: v })}
+                min={1}
+                max={5}
+              />
             </Field>
             <div className="md:col-span-2">
               <Field label="Milestones achieved">
-                <TextArea value={e.milestones} onChange={(ev) => updateEvening({ milestones: ev.target.value })} placeholder="Anything earned today — first SLR without lag, etc." />
+                <TextArea
+                  value={e.milestones}
+                  onChange={(ev) => updateEvening({ milestones: ev.target.value })}
+                  placeholder="Anything earned today — first SLR without lag, etc."
+                />
               </Field>
             </div>
             <div className="md:col-span-2">
               <Field label="Evening notes">
-                <TextArea value={e.notes} onChange={(ev) => updateEvening({ notes: ev.target.value })} />
+                <TextArea
+                  value={e.notes}
+                  onChange={(ev) => updateEvening({ notes: ev.target.value })}
+                />
               </Field>
             </div>
           </div>
@@ -247,7 +349,11 @@ function CheckInPage() {
       )}
 
       {packetOpen && (
-        <CoachPacketDialog kind={packetOpen} onClose={() => setPacketOpen(null)} />
+        <CoachPacketDialog
+          kind={packetOpen}
+          date={selectedDate}
+          onClose={() => setPacketOpen(null)}
+        />
       )}
     </AppShell>
   );
