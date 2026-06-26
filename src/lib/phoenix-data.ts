@@ -469,6 +469,18 @@ export function principleForDate(isoDate: string) {
   return PRINCIPLES[seed % PRINCIPLES.length];
 }
 
+export const PHASE_PRINCIPLES: { title: string; body: string }[] = [
+  { title: "Recovery is training.", body: "What you do between sessions decides what the next session can be." },
+  { title: "Progression is earned, never assumed.", body: "The calendar does not promote you. Evidence does." },
+  { title: "Load builds capacity.", body: "Tissue tolerates what you teach it to tolerate." },
+  { title: "Consistency beats intensity.", body: "Stacked good days compound. Heroic ones don't." },
+  { title: "Performance is earned.", body: "Return-to-sport is a test you pass, not a date you hit." },
+];
+
+export function principleForPhase(phaseN: number) {
+  return PHASE_PRINCIPLES[Math.min(Math.max(phaseN, 1), 5) - 1];
+}
+
 export const PHASES = [
   { n: 1, name: "Acute response", missionId: "calm-the-knee" as MissionId },
   { n: 2, name: "Activation", missionId: "wake-the-quad" as MissionId },
