@@ -1,14 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AppShell, PageHeader, ProgressBar, StatTile, Surface } from "@/components/app-shell";
+import { AppShell, ProgressBar, StatTile, Surface } from "@/components/app-shell";
 import {
   currentMission,
+  currentPhaseN,
   daysPostOp,
   getMorningForDate,
   levelFromXp,
+  missionMilestoneProgress,
   previousMorning,
-  principleForDate,
+  principleForPhase,
   readinessFor,
   setState,
+  todaysWin,
   trendFor,
   usePhoenix,
 } from "@/lib/phoenix-data";
@@ -22,6 +25,7 @@ import {
   Flame,
   Minus,
   Sparkles,
+  Trophy,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
@@ -47,6 +51,8 @@ function Dashboard() {
   const s = usePhoenix();
   const mission = currentMission(s);
   const iq = levelFromXp(s.recoveryIqXp);
+  const milestoneProg = missionMilestoneProgress(s, mission.id);
+  const phaseN = currentPhaseN(s);
 
   const todayIso = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
@@ -70,7 +76,8 @@ function Dashboard() {
     year: "numeric",
   });
   const dayPostOp = daysPostOp(s, selectedDate);
-  const principle = principleForDate(selectedDate);
+  const principle = principleForPhase(phaseN);
+  const win = todaysWin(m, prev);
 
   const toggleQuest = (id: string) =>
     setState((prev) => ({
@@ -92,14 +99,55 @@ function Dashboard() {
   const rec = s.todayRecommendation;
   const readinessTone =
     readiness.state === "ready" ? "good" : readiness.state === "modify" ? "watch" : "alert";
+  const readinessRing =
+    readiness.state === "ready"
+      ? "border-success/60 bg-success/5"
+      : readiness.state === "modify"
+        ? "border-warning/60 bg-warning/5"
+        : "border-destructive/60 bg-destructive/5";
+  const readinessText =
+    readiness.state === "ready"
+      ? "text-success"
+      : readiness.state === "modify"
+        ? "text-warning"
+        : "text-destructive";
 
   return (
     <AppShell>
-      <PageHeader
-        eyebrow="Today"
-        title={`Good to see you, ${s.athleteName}.`}
-        description="Here's how you're doing today — based on this morning's evidence."
-        action={
+      {/* Contextual header */}
+      <div className="mb-5 grid grid-cols-1 items-end gap-4 md:grid-cols-[1fr_auto]">
+        <div className="min-w-0">
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-phoenix">
+            Mission Control
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+            Welcome back, {s.athleteName}.
+          </h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Day {dayPostOp} Post-Op · {dayOfWeek}, {longDate}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Current Campaign ·{" "}
+            <span className="text-foreground">{s.campaignName}</span>
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Compact Recovery IQ */}
+          <div className="hidden min-w-[220px] rounded-xl border border-border bg-card/50 p-3 sm:block">
+            <div className="flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <Flame className="h-3 w-3 text-phoenix" /> Recovery IQ
+              </span>
+              <span className="text-foreground">Lvl {iq.level}</span>
+            </div>
+            <div className="mt-2">
+              <ProgressBar value={iq.pct} />
+              <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>{s.recoveryIqXp} XP</span>
+                <span>{iq.toNext} to next</span>
+              </div>
+            </div>
+          </div>
           <Link
             to="/check-in"
             className="hidden items-center gap-2 rounded-xl bg-gradient-phoenix px-4 py-2.5 text-sm font-medium text-phoenix-foreground shadow-phoenix transition hover:opacity-95 md:inline-flex"
@@ -107,25 +155,39 @@ function Dashboard() {
             <Sparkles className="h-4 w-4" />
             Daily check-in
           </Link>
-        }
-      />
+        </div>
+      </div>
+
+      {/* Mobile Recovery IQ */}
+      <div className="mb-4 rounded-xl border border-border bg-card/50 p-3 sm:hidden">
+        <div className="flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <Flame className="h-3 w-3 text-phoenix" /> Recovery IQ
+          </span>
+          <span className="text-foreground">Lvl {iq.level} · {s.recoveryIqXp} XP</span>
+        </div>
+        <div className="mt-2">
+          <ProgressBar value={iq.pct} />
+          <div className="mt-1 text-[11px] text-muted-foreground">{iq.toNext} XP to next level</div>
+        </div>
+      </div>
 
       {/* Persistent date selector */}
-      <Surface className="mb-5 p-3">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => shiftDate(-1)}
-            aria-label="Previous day"
-            className="grid h-9 w-9 place-items-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+      <Popover>
+        <Surface className="mb-5 p-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => shiftDate(-1)}
+              aria-label="Previous day"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
 
-          <Popover>
             <PopoverTrigger asChild>
               <button
                 type="button"
-                aria-label="Change date"
+                aria-label="Open calendar"
                 className="group flex flex-1 cursor-pointer items-center justify-between gap-3 rounded-xl border border-border bg-background/40 px-4 py-2 text-left transition hover:border-phoenix/60 hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-phoenix/60"
               >
                 <div className="min-w-0">
@@ -139,35 +201,30 @@ function Dashboard() {
                   <span className="rounded-md bg-phoenix/10 px-2 py-0.5 text-[11px] font-medium text-phoenix">
                     Day {dayPostOp} Post-Op
                   </span>
-                  <span className="hidden items-center gap-1 rounded-md border border-border/80 bg-background/60 px-2 py-1 text-[11px] font-medium text-muted-foreground transition group-hover:text-foreground sm:inline-flex">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    Change
-                  </span>
-                  <CalendarDays className="h-4 w-4 text-muted-foreground sm:hidden" />
+                  <CalendarDays className="h-4 w-4 text-muted-foreground transition group-hover:text-foreground" />
                 </div>
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 pointer-events-auto" align="center">
-              <Calendar
-                mode="single"
-                selected={new Date(selectedDate + "T00:00:00")}
-                onSelect={(d) => d && setSelectedDate(d.toISOString().slice(0, 10))}
-                disabled={(d) => d > new Date()}
-                initialFocus
-                className="pointer-events-auto p-3"
-              />
-            </PopoverContent>
-          </Popover>
 
-          <button
-            onClick={() => shiftDate(1)}
-            aria-label="Next day"
-            disabled={isToday}
-            className="grid h-9 w-9 place-items-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:text-foreground disabled:opacity-40"
-          >
-            <ArrowRightIcon className="h-4 w-4" />
-          </button>
-        </div>
+            <button
+              onClick={() => shiftDate(1)}
+              aria-label="Next day"
+              disabled={isToday}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:text-foreground disabled:opacity-40"
+            >
+              <ArrowRightIcon className="h-4 w-4" />
+            </button>
+          </div>
+          <PopoverContent className="w-auto p-0 pointer-events-auto" align="center">
+            <Calendar
+              mode="single"
+              selected={new Date(selectedDate + "T00:00:00")}
+              onSelect={(d) => d && setSelectedDate(d.toISOString().slice(0, 10))}
+              disabled={(d) => d > new Date()}
+              initialFocus
+              className="pointer-events-auto p-3"
+            />
+          </PopoverContent>
         {!m && (
           <div className="mt-3 flex items-center justify-between rounded-lg border border-dashed border-border/80 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
             <span>No check-in recorded for this day.</span>
@@ -176,11 +233,12 @@ function Dashboard() {
             </Link>
           </div>
         )}
-      </Surface>
+        </Surface>
+      </Popover>
 
       {/* Hero mission card */}
-      <Surface className="mb-6 overflow-hidden p-0">
-        <div className="relative grid gap-6 p-6 md:grid-cols-[1fr_auto] md:items-center md:p-7">
+      <Surface className="mb-5 overflow-hidden p-0">
+        <div className="relative p-6 md:p-7">
           <div className="absolute inset-0 -z-10 opacity-30"
                style={{ background: "radial-gradient(600px 200px at 80% 0%, var(--color-phoenix-glow), transparent 60%)" }} />
           <div className="min-w-0">
@@ -216,46 +274,47 @@ function Dashboard() {
             <div className="mt-4">
               <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span>Mission progress</span>
-                <span className="font-medium text-foreground">{mission.progress}%</span>
+                <span className="font-medium text-foreground">
+                  {milestoneProg.done} of {milestoneProg.total} milestones complete
+                </span>
               </div>
-              <ProgressBar value={mission.progress} />
+              <ProgressBar value={milestoneProg.pct} />
             </div>
             <div className="mt-4 text-xs text-muted-foreground">
               Next unlock · <span className="text-foreground">{mission.nextUnlock}</span>
             </div>
           </div>
+        </div>
+      </Surface>
 
-          <div className="rounded-2xl border border-border bg-background/40 p-5">
-            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              <Flame className="h-3.5 w-3.5 text-phoenix" />
-              Recovery IQ
+      {/* Dominant Today's Readiness */}
+      <Surface className={cn("mb-5 border p-5", readinessRing)}>
+        <div className="flex items-start gap-4">
+          <span className="text-4xl leading-none">{readiness.dot}</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Today's Readiness
             </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-3xl font-bold tracking-tight">Lvl {iq.level}</span>
-              <span className="text-xs text-muted-foreground">{s.recoveryIqXp} XP</span>
+            <div className={cn("mt-1 text-3xl font-bold tracking-tight uppercase", readinessText)}>
+              {readiness.label}
             </div>
-            <div className="mt-3">
-              <ProgressBar value={iq.pct} />
-              <div className="mt-1.5 text-[11px] text-muted-foreground">
-                {iq.toNext} XP to next level
-              </div>
-            </div>
+            <p className="mt-1 text-sm text-muted-foreground">{readiness.summary}</p>
           </div>
         </div>
       </Surface>
 
-      {/* Vitals grid */}
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatTile
-          label="Today's Readiness"
-          value={
-            <span className="inline-flex items-center gap-2">
-              <span className="text-xl leading-none">{readiness.dot}</span>
-              {readiness.label}
-            </span>
-          }
-          hint={readiness.summary}
-          tone={readinessTone}
+      {/* Row 1 · Decision metrics */}
+      <div className="mb-2 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+        <span className="h-1.5 w-1.5 rounded-full bg-phoenix" /> Decision Metrics
+        <span className="text-muted-foreground/70">Can I move and train today?</span>
+      </div>
+      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <MetricTile
+          label="Walking confidence"
+          value={m ? `${m.walkingConfidence}/5` : "—"}
+          current={m?.walkingConfidence}
+          previous={prev?.walkingConfidence}
+          direction="higher-better"
         />
         <MetricTile
           label="Pain zone"
@@ -274,13 +333,24 @@ function Dashboard() {
           direction="lower-better"
           tone={m ? (m.swelling <= 2 ? "good" : m.swelling <= 4 ? "watch" : "alert") : "default"}
         />
-        <MetricTile
-          label="Walking confidence"
-          value={m ? `${m.walkingConfidence}/5` : "—"}
-          current={m?.walkingConfidence}
-          previous={prev?.walkingConfidence}
-          direction="higher-better"
-        />
+        <Surface className="p-4">
+          <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            Today's Win
+          </div>
+          <div className="mt-2 inline-flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-phoenix" />
+            <span className="text-sm font-semibold leading-snug">{win.label}</span>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">{win.detail}</div>
+        </Surface>
+      </div>
+
+      {/* Row 2 · Supporting metrics */}
+      <div className="mb-2 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60" /> Supporting Metrics
+        <span className="text-muted-foreground/70">What is influencing readiness?</span>
+      </div>
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <MetricTile
           label="Quad activation"
           value={m ? `${m.quadActivation}/5` : "—"}
@@ -347,6 +417,7 @@ function Dashboard() {
               <RecRow label="Workload" value={rec.workload} />
               <RecRow label="Reason" value={rec.reason} />
               <RecRow label="Next Reassessment" value={rec.nextReassessment} />
+              <RecRow label="Confidence" value={rec.confidence} />
             </dl>
             <div className="mt-3 text-[11px] text-muted-foreground">
               Informational only. External coaching makes the final decision.
