@@ -1,12 +1,11 @@
 import type { CoachPacket, PhoenixState } from "./phoenix-data";
 import {
   activeMissions,
-  activeRecoveryTracks,
+  activeRecoveryTracksForPhase,
   athleteNotesForDate,
   coachNotesForDate,
   currentCampaign,
   currentMission,
-  currentPhase,
   dailyCoachPlanForDate,
   dailyQuestsForDate,
   daysPostOp,
@@ -15,6 +14,7 @@ import {
   levelFromXp,
   previousEvening,
   previousMorning,
+  phaseForDate,
   readinessForDate,
   smallWinForDate,
   todayIso,
@@ -28,10 +28,10 @@ export function buildPacketJson(
   isoDate = todayIso(),
 ): CoachPacket {
   const campaign = currentCampaign(s);
-  const phase = currentPhase(s);
+  const phase = phaseForDate(s, isoDate);
   const mission = currentMission(s);
   const missions = activeMissions(s);
-  const activeTracks = activeRecoveryTracks(s);
+  const activeTracks = activeRecoveryTracksForPhase(s, phase);
   const { level } = levelFromXp(s.recoveryIqXp);
   const morning = getMorningForDate(s, isoDate);
   const evening = getEveningForDate(s, isoDate);
@@ -109,10 +109,10 @@ export function buildPacketMarkdown(
   isoDate = todayIso(),
 ): string {
   const campaign = currentCampaign(s);
-  const phase = currentPhase(s);
+  const phase = phaseForDate(s, isoDate);
   const mission = currentMission(s);
   const missions = activeMissions(s);
-  const tracks = activeRecoveryTracks(s);
+  const tracks = activeRecoveryTracksForPhase(s, phase);
   const { level } = levelFromXp(s.recoveryIqXp);
   const m = getMorningForDate(s, isoDate);
   const e = getEveningForDate(s, isoDate);

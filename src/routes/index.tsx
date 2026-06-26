@@ -13,16 +13,21 @@ import {
   type DailyQuest,
   type DailyCoachPlan,
   type CoachNote,
+  type EveningCheckIn,
+  type MorningCheckIn,
   daysPostOp,
   getMorningForDate,
   latestCoachNoteForDateAndPhase,
   levelFromXp,
+  METRIC_DEFINITIONS,
   missionMilestoneProgress,
+  phaseForDate,
   previousMorning,
   readinessForDate,
   setState,
-  todaysWin,
+  todaysWinForDate,
   trendFor,
+  type MetricId,
   usePhoenix,
 } from "@/lib/phoenix-data";
 import {
@@ -78,6 +83,7 @@ function Dashboard() {
   const m = getMorningForDate(s, selectedDate);
   const evening = getEveningForDate(s, selectedDate);
   const prev = previousMorning(s, selectedDate);
+  const phase = phaseForDate(s, selectedDate);
   const readiness = readinessForDate(s, selectedDate);
   const isToday = selectedDate === todayIso;
 
@@ -96,7 +102,7 @@ function Dashboard() {
     year: "numeric",
   });
   const dayPostOp = daysPostOp(s, selectedDate);
-  const win = todaysWin(m, prev);
+  const win = todaysWinForDate(s, selectedDate);
   const activePlan = activeDailyCoachPlanForDate(s, selectedDate);
   const latestCoachNote = latestCoachNoteForDateAndPhase(s, selectedDate);
   const quests = dailyQuestsForDate(s, selectedDate);
@@ -355,33 +361,18 @@ function Dashboard() {
       {/* Row 1 · Decision metrics */}
       <div className="mb-2 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
         <span className="h-1.5 w-1.5 rounded-full bg-phoenix" /> Decision Metrics
-        <span className="text-muted-foreground/70">Can I move and train today?</span>
+        <span className="text-muted-foreground/70">{phase.dashboardQuestion}</span>
       </div>
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <MetricTile
-          label="Walking confidence"
-          value={m ? `${m.walkingConfidence}/5` : "—"}
-          current={m?.walkingConfidence}
-          previous={prev?.walkingConfidence}
-          direction="higher-better"
-        />
-        <MetricTile
-          label="Pain zone"
-          value={m ? `${m.pain}/10` : "—"}
-          unit=""
-          current={m?.pain}
-          previous={prev?.pain}
-          direction="lower-better"
-          tone={m ? (m.pain <= 3 ? "good" : m.pain <= 4 ? "watch" : "alert") : "default"}
-        />
-        <MetricTile
-          label="Swelling"
-          value={m ? `${m.swelling}/10` : "—"}
-          current={m?.swelling}
-          previous={prev?.swelling}
-          direction="lower-better"
-          tone={m ? (m.swelling <= 2 ? "good" : m.swelling <= 4 ? "watch" : "alert") : "default"}
-        />
+        {phase.primaryMetrics.map((metricId) => (
+          <DashboardMetricTile
+            key={metricId}
+            metricId={metricId}
+            morning={m}
+            previousMorning={prev}
+            evening={evening}
+          />
+        ))}
         <Surface className="p-4">
           <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
             Today's Win
@@ -400,27 +391,15 @@ function Dashboard() {
         <span className="text-muted-foreground/70">What is influencing readiness?</span>
       </div>
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <MetricTile
-          label="Quad activation"
-          value={m ? `${m.quadActivation}/5` : "—"}
-          current={m?.quadActivation}
-          previous={prev?.quadActivation}
-          direction="higher-better"
-        />
-        <MetricTile
-          label="Extension"
-          value={m ? `${m.extension}°` : "—"}
-          current={m?.extension}
-          previous={prev?.extension}
-          direction="lower-better"
-          unit="°"
-        />
-        <StatTile label="Sleep" value={m ? `${m.sleepHours}h` : "—"} hint="Last night" />
-        <StatTile
-          label="Protein target"
-          value={m ? `${m.proteinTargetG}g` : "—"}
-          hint="Daily target"
-        />
+        {phase.supportingMetrics.map((metricId) => (
+          <DashboardMetricTile
+            key={metricId}
+            metricId={metricId}
+            morning={m}
+            previousMorning={prev}
+            evening={evening}
+          />
+        ))}
       </div>
 
       {/* Today */}
@@ -498,6 +477,205 @@ function Dashboard() {
 }
 
 // ---------- local helpers ----------
+
+function formatMetricValue(value: string) {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function swellingLevel(m: MorningCheckIn | null | undefined) {
+  if (!m) return undefined;
+  return m.swellingLevel ?? m.swelling;
+}
+
+function metricTone(
+  metricId: MetricId,
+  value: number | undefined,
+): "default" | "good" | "watch" | "alert" {
+  if (value == null) return "default";
+  if (metricId === "pain") return value <= 3 ? "good" : value <= 4 ? "watch" : "alert";
+  if (metricId === "swelling-level") return value <= 2 ? "good" : value <= 4 ? "watch" : "alert";
+  if (metricId === "walking-confidence" || metricId === "movement-quality")
+    return value >= 4 ? "good" : value >= 3 ? "watch" : "alert";
+  if (
+    metricId === "quad-activation" ||
+    metricId === "training-readiness" ||
+    metricId === "sport-confidence"
+  )
+    return value >= 4 ? "good" : value >= 3 ? "watch" : "alert";
+  return "default";
+}
+
+function DashboardMetricTile({
+  metricId,
+  morning,
+  previousMorning,
+  evening,
+}: {
+  metricId: MetricId;
+  morning: MorningCheckIn | null;
+  previousMorning: MorningCheckIn | null;
+  evening: EveningCheckIn | null;
+}) {
+  const metric = METRIC_DEFINITIONS[metricId];
+
+  switch (metricId) {
+    case "pain":
+      return (
+        <MetricTile
+          label={metric.label}
+          value={morning ? `${morning.pain}/10` : "—"}
+          current={morning?.pain}
+          previous={previousMorning?.pain}
+          direction="lower-better"
+          tone={metricTone(metricId, morning?.pain)}
+        />
+      );
+    case "swelling-level": {
+      const current = swellingLevel(morning);
+      const previous = swellingLevel(previousMorning);
+      return (
+        <MetricTile
+          label={metric.label}
+          value={current != null ? `${current}/10` : "—"}
+          current={current}
+          previous={previous}
+          direction="lower-better"
+          tone={metricTone(metricId, current)}
+        />
+      );
+    }
+    case "walking-confidence":
+      return (
+        <MetricTile
+          label={metric.label}
+          value={morning ? `${morning.walkingConfidence}/5` : "—"}
+          current={morning?.walkingConfidence}
+          previous={previousMorning?.walkingConfidence}
+          direction="higher-better"
+          tone={metricTone(metricId, morning?.walkingConfidence)}
+        />
+      );
+    case "movement-quality":
+      return (
+        <MetricTile
+          label={metric.label}
+          value={morning?.movementQuality != null ? `${morning.movementQuality}/5` : "—"}
+          current={morning?.movementQuality}
+          previous={previousMorning?.movementQuality}
+          direction="higher-better"
+          tone={metricTone(metricId, morning?.movementQuality)}
+        />
+      );
+    case "quad-activation":
+      return (
+        <MetricTile
+          label={metric.label}
+          value={morning ? `${morning.quadActivation}/5` : "—"}
+          current={morning?.quadActivation}
+          previous={previousMorning?.quadActivation}
+          direction="higher-better"
+          tone={metricTone(metricId, morning?.quadActivation)}
+        />
+      );
+    case "flexion":
+      return (
+        <MetricTile
+          label={metric.label}
+          value={morning ? `${morning.flexion}°` : "—"}
+          current={morning?.flexion}
+          previous={previousMorning?.flexion}
+          direction="higher-better"
+          unit="°"
+        />
+      );
+    case "sleep-hours":
+      return (
+        <MetricTile
+          label={metric.label}
+          value={morning ? `${morning.sleepHours}h` : "—"}
+          current={morning?.sleepHours}
+          previous={previousMorning?.sleepHours}
+          direction="higher-better"
+          unit="h"
+        />
+      );
+    case "training-readiness":
+      return (
+        <MetricTile
+          label={metric.label}
+          value={morning?.trainingReadiness != null ? `${morning.trainingReadiness}/5` : "—"}
+          current={morning?.trainingReadiness}
+          previous={previousMorning?.trainingReadiness}
+          direction="higher-better"
+          tone={metricTone(metricId, morning?.trainingReadiness)}
+        />
+      );
+    case "sport-confidence":
+      return (
+        <MetricTile
+          label={metric.label}
+          value={morning?.sportConfidence != null ? `${morning.sportConfidence}/5` : "—"}
+          current={morning?.sportConfidence}
+          previous={previousMorning?.sportConfidence}
+          direction="higher-better"
+          tone={metricTone(metricId, morning?.sportConfidence)}
+        />
+      );
+    case "swelling-trend": {
+      const trend = morning?.swellingTrend ?? "unknown";
+      return (
+        <StatTile
+          label={metric.label}
+          value={formatMetricValue(trend)}
+          hint="Morning context"
+          tone={trend === "improved" ? "good" : trend === "worse" ? "alert" : "default"}
+        />
+      );
+    }
+    case "extension-status":
+      return (
+        <StatTile
+          label={metric.label}
+          value={morning?.extensionStatus ? formatMetricValue(morning.extensionStatus) : "—"}
+          hint={morning ? `${morning.extension}° from neutral` : "No check-in"}
+        />
+      );
+    case "protein-target":
+      return (
+        <StatTile
+          label={metric.label}
+          value={morning ? `${morning.proteinTargetG}g` : "—"}
+          hint="Daily target"
+        />
+      );
+    case "session-tolerance": {
+      const reactive = evening && (evening.painAfter >= 5 || evening.swellingChange >= 2);
+      const stable = evening && evening.painAfter <= 3 && evening.swellingChange <= 0;
+      return (
+        <StatTile
+          label={metric.label}
+          value={!evening ? "—" : stable ? "Stable" : reactive ? "Reactive" : "Monitor"}
+          hint="Evening response"
+          tone={!evening ? "default" : stable ? "good" : reactive ? "alert" : "watch"}
+        />
+      );
+    }
+    case "next-morning-response": {
+      const trend = morning?.swellingTrend ?? "unknown";
+      return (
+        <StatTile
+          label={metric.label}
+          value={trend === "worse" ? "Reactive" : trend === "unknown" ? "—" : "Stable"}
+          hint="Based on swelling trend"
+          tone={trend === "worse" ? "alert" : trend === "unknown" ? "default" : "good"}
+        />
+      );
+    }
+  }
+}
 
 function QuestRow({ q, onToggle }: { q: DailyQuest; onToggle: () => void }) {
   return (
