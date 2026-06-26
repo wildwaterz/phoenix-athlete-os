@@ -88,9 +88,11 @@ export interface PhoenixState {
     workload: string;
     reason: string;
     nextReassessment: string;
+    confidence: "High" | "Medium" | "Low";
   };
   athleteName: string;
   surgeryDate: string; // ISO yyyy-mm-dd
+  campaignName: string;
 }
 
 // ---------- seed ----------
@@ -277,8 +279,9 @@ const seedMorningHistory: MorningCheckIn[] = [
 ];
 
 const initial: PhoenixState = {
-  athleteName: "Athlete",
+  athleteName: "Kevin",
   surgeryDate: "2026-06-25",
+  campaignName: "ACL Revision Prehab",
   currentMissionId: "wake-the-quad",
   recoveryIqXp: 1240,
   morning: {
@@ -305,6 +308,7 @@ const initial: PhoenixState = {
     workload: "Hold yesterday's volume. Add 3× terminal knee extension holds.",
     reason: "Activation is consolidating (4/5 for 4 days). Swelling stable at 1/10.",
     nextReassessment: "48h — extension and morning swelling.",
+    confidence: "Medium",
   },
 };
 
@@ -465,6 +469,18 @@ export function principleForDate(isoDate: string) {
   return PRINCIPLES[seed % PRINCIPLES.length];
 }
 
+export const PHASE_PRINCIPLES: { title: string; body: string }[] = [
+  { title: "Recovery is training.", body: "What you do between sessions decides what the next session can be." },
+  { title: "Progression is earned, never assumed.", body: "The calendar does not promote you. Evidence does." },
+  { title: "Load builds capacity.", body: "Tissue tolerates what you teach it to tolerate." },
+  { title: "Consistency beats intensity.", body: "Stacked good days compound. Heroic ones don't." },
+  { title: "Performance is earned.", body: "Return-to-sport is a test you pass, not a date you hit." },
+];
+
+export function principleForPhase(phaseN: number) {
+  return PHASE_PRINCIPLES[Math.min(Math.max(phaseN, 1), 5) - 1];
+}
+
 export const PHASES = [
   { n: 1, name: "Acute response", missionId: "calm-the-knee" as MissionId },
   { n: 2, name: "Activation", missionId: "wake-the-quad" as MissionId },
@@ -475,4 +491,45 @@ export const PHASES = [
 
 export function currentPhaseN(s: PhoenixState): number {
   return PHASES.find((p) => p.missionId === s.currentMissionId)?.n ?? 1;
+}
+
+export function missionMilestoneProgress(s: PhoenixState, missionId: MissionId) {
+  const list = s.milestones.filter((m) => m.mission === missionId);
+  const total = Math.max(list.length, 1);
+  const done = list.filter((m) => m.status === "unlocked").length;
+  return { done, total, pct: Math.round((done / total) * 100) };
+}
+
+export function todaysWin(
+  current: MorningCheckIn | null,
+  previous: MorningCheckIn | null,
+): { label: string; detail: string } {
+  if (!current) return { label: "Show up today", detail: "Log a check-in to start the streak." };
+  if (previous) {
+    if (current.walkingConfidence > previous.walkingConfidence)
+      return {
+        label: `Walking confidence improved by +${current.walkingConfidence - previous.walkingConfidence}`,
+        detail: "Gait is trending the right direction.",
+      };
+    if (current.quadActivation > previous.quadActivation)
+      return {
+        label: `Quad activation improved by +${current.quadActivation - previous.quadActivation}`,
+        detail: "Neuromuscular control is consolidating.",
+      };
+    if (current.pain < previous.pain)
+      return {
+        label: `Pain dropped by ${previous.pain - current.pain}`,
+        detail: "Tissue is quieting down.",
+      };
+    if (current.swelling < previous.swelling)
+      return {
+        label: `Swelling dropped by ${previous.swelling - current.swelling}`,
+        detail: "Inflammation gate is loosening.",
+      };
+  }
+  if (current.pain <= 2 && current.swelling <= 2)
+    return { label: "Pain remained in the green zone", detail: "Stable baseline held." };
+  if (current.swelling <= 2)
+    return { label: "Swelling stayed stable", detail: "Maintenance is a win." };
+  return { label: "Check-in logged", detail: "Evidence over assumption — that's the work." };
 }
