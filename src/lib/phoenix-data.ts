@@ -1066,20 +1066,7 @@ function createCheckIn(date: string, morning?: MorningCheckIn, evening?: Evening
   };
 }
 
-const seedCoachNotes: CoachNote[] = [
-  {
-    id: "coach-note-1",
-    date: todayIso(),
-    source: "chatgpt",
-    author: "ChatGPT",
-    body: "Keep today's work in the Modify lane: reinforce quad activation, add gentle ROM exposure, and let swelling response decide tomorrow's volume.",
-    relatedPhaseId: "activation-early-rom",
-    relatedMissionIds: ["wake-the-quad", "restore-extension"],
-    relatedTrackIds: ["activation", "rom", "symptoms"],
-    tags: ["daily-plan", "modify", "rom"],
-    createdAt: `${todayIso()}T08:00:00.000Z`,
-  },
-];
+const seedCoachNotes: CoachNote[] = [];
 
 const seedAthleteNotes: AthleteNote[] = [
   {
@@ -1347,7 +1334,7 @@ const initial: PhoenixState = {
   milestones: seedMilestones,
   journal: seedJournal,
   todayQuests: [],
-  dailyCoachPlans: [createSeedDailyCoachPlan(todayIso())],
+  dailyCoachPlans: [],
   coachNotes: seedCoachNotes,
   athleteNotes: seedAthleteNotes,
   recoveryIqEvents: seedRecoveryIqEvents,
@@ -1444,6 +1431,9 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
             raw.source === "other"
           ? raw.source
           : "self";
+    const isSeedPlan =
+      raw.importedFromNoteId === "coach-note-1" ||
+      raw.notes?.includes("Imported plan seed shows the intended Daily Coach Plan shape");
 
     return {
       ...raw,
@@ -1462,7 +1452,7 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
       stopRules: raw.stopRules ?? [],
       eveningCheckInFocus: raw.eveningCheckInFocus ?? [],
       notes: raw.notes ?? "",
-      status: raw.status ?? "active",
+      status: isSeedPlan ? "archived" : (raw.status ?? "active"),
     };
   });
 
@@ -2153,9 +2143,7 @@ function normalizeQuestForDate(
 }
 
 export function dailyCoachPlanForDate(s: PhoenixState, isoDate = todayIso()): DailyCoachPlan {
-  const importedPlan =
-    s.dailyCoachPlans?.find((plan) => plan.date === isoDate && plan.status === "active") ??
-    s.dailyCoachPlans?.find((plan) => plan.date === isoDate);
+  const importedPlan = activeDailyCoachPlanForDate(s, isoDate);
   if (importedPlan) {
     return {
       ...importedPlan,
@@ -2201,6 +2189,21 @@ export function dailyCoachPlanForDate(s: PhoenixState, isoDate = todayIso()): Da
     eveningCheckInFocus: ["Pain after activity", "Swelling change", "Walking or movement quality"],
     notes: "Generated from local Project Phoenix rules when no imported coach plan is active.",
     status: "draft",
+  };
+}
+
+export function activeDailyCoachPlanForDate(
+  s: PhoenixState,
+  isoDate = todayIso(),
+): DailyCoachPlan | null {
+  const plan =
+    s.dailyCoachPlans
+      ?.filter((item) => item.date === isoDate && item.status === "active")
+      .sort((a, b) => (a.importedAt < b.importedAt ? 1 : -1))[0] ?? null;
+  if (!plan) return null;
+  return {
+    ...plan,
+    quests: plan.quests.map((quest) => normalizeQuestForDate(s, isoDate, quest)),
   };
 }
 
@@ -2501,6 +2504,15 @@ export function activateDailyCoachPlan(plan: DailyCoachPlan) {
   });
 }
 
+export function archiveDailyCoachPlan(planId: string) {
+  setState((prev) => ({
+    ...prev,
+    dailyCoachPlans: prev.dailyCoachPlans.map((plan) =>
+      plan.id === planId ? { ...plan, status: "archived" } : plan,
+    ),
+  }));
+}
+
 export type Trend = "up" | "down" | "flat" | "none";
 
 function upsertByDate<T extends { date: string }>(entries: T[], entry: T): T[] {
@@ -2755,6 +2767,25 @@ export function smallWinForDate(s: PhoenixState, isoDate = todayIso()): SmallWin
 
 export function coachNotesForDate(s: PhoenixState, isoDate = todayIso()): CoachNote[] {
   return s.coachNotes.filter((note) => note.date === isoDate);
+}
+
+export function latestCoachNoteForDateAndPhase(
+  s: PhoenixState,
+  isoDate = todayIso(),
+): CoachNote | null {
+  const phaseId = currentPhase(s).id;
+  return (
+    s.coachNotes
+      .filter(
+        (note) =>
+          note.date === isoDate &&
+          note.id !== "coach-note-1" &&
+          (note.relatedPhaseId == null || note.relatedPhaseId === phaseId) &&
+          !note.tags?.includes("seed") &&
+          !note.tags?.includes("demo"),
+      )
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] ?? null
+  );
 }
 
 export function athleteNotesForDate(s: PhoenixState, isoDate = todayIso()): AthleteNote[] {

@@ -1,17 +1,24 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell, ProgressBar, StatTile, Surface } from "@/components/app-shell";
+import { CoachPacketDialog } from "@/components/coach-packet-dialog";
+import { ImportCoachPlanDialog } from "@/components/import-coach-plan-dialog";
+import { buildPacketMarkdown, type PacketKind } from "@/lib/coach-packet";
 import {
+  activeDailyCoachPlanForDate,
+  archiveDailyCoachPlan,
   currentMission,
   currentPhaseN,
-  dailyCoachPlanForDate,
   dailyQuestsForDate,
+  getEveningForDate,
   type DailyQuest,
+  type DailyCoachPlan,
+  type CoachNote,
   daysPostOp,
   getMorningForDate,
+  latestCoachNoteForDateAndPhase,
   levelFromXp,
   missionMilestoneProgress,
   previousMorning,
-  principleForPhase,
   readinessFor,
   setState,
   todaysWin,
@@ -19,18 +26,23 @@ import {
   usePhoenix,
 } from "@/lib/phoenix-data";
 import {
-  ArrowRight,
+  Archive,
   ArrowLeft,
   ArrowRight as ArrowRightIcon,
   CalendarDays,
   CheckCircle2,
   Circle,
+  Copy,
+  Eye,
   Flame,
   Minus,
+  RefreshCw,
   Sparkles,
   Trophy,
   TrendingDown,
   TrendingUp,
+  Upload,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, type ReactNode } from "react";
@@ -59,7 +71,12 @@ function Dashboard() {
 
   const todayIso = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
+  const [packetOpen, setPacketOpen] = useState<null | PacketKind>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [viewPlanOpen, setViewPlanOpen] = useState(false);
+  const [copiedMorningPacket, setCopiedMorningPacket] = useState(false);
   const m = getMorningForDate(s, selectedDate);
+  const evening = getEveningForDate(s, selectedDate);
   const prev = previousMorning(s, selectedDate);
   const readiness = readinessFor(m);
   const isToday = selectedDate === todayIso;
@@ -79,10 +96,21 @@ function Dashboard() {
     year: "numeric",
   });
   const dayPostOp = daysPostOp(s, selectedDate);
-  const principle = principleForPhase(phaseN);
   const win = todaysWin(m, prev);
-  const plan = dailyCoachPlanForDate(s, selectedDate);
+  const activePlan = activeDailyCoachPlanForDate(s, selectedDate);
+  const latestCoachNote = latestCoachNoteForDateAndPhase(s, selectedDate);
   const quests = dailyQuestsForDate(s, selectedDate);
+
+  const copyMorningPacket = async () => {
+    if (!m) return;
+    try {
+      await navigator.clipboard.writeText(buildPacketMarkdown("morning", s, selectedDate));
+      setCopiedMorningPacket(true);
+      setTimeout(() => setCopiedMorningPacket(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const toggleQuest = (id: string) =>
     setState((prev) => {
@@ -428,99 +456,21 @@ function Dashboard() {
               </ul>
             </>
           )}
-
-          <div className="mt-5 rounded-xl border border-phoenix/20 bg-phoenix/5 p-4">
-            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-phoenix">
-              <Sparkles className="h-3.5 w-3.5" /> Daily Coach Plan
-            </div>
-            <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-              <RecRow label="Primary Focus" value={plan.primaryFocus} />
-              <RecRow label="Readiness" value={plan.readiness} />
-              <RecRow label="Workload" value={plan.workload || "Use today's quests."} />
-              <RecRow
-                label="Reason"
-                value={plan.rationale || plan.readinessReason || "Imported coach plan."}
-              />
-              <RecRow
-                label="Next Reassessment"
-                value={
-                  plan.nextReassessment || plan.eveningCheckInFocus.join(", ") || "Evening check-in"
-                }
-              />
-              <RecRow label="Confidence" value={plan.confidence} />
-            </dl>
-            {plan.targets.length > 0 && (
-              <div className="mt-4">
-                <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                  Targets
-                </div>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  {plan.targets.map((target) => (
-                    <div
-                      key={target.id}
-                      className="rounded-lg border border-border/80 bg-background/40 p-3"
-                    >
-                      <div className="text-xs font-medium">{target.label}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{target.value}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {plan.stopRules.length > 0 && (
-              <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
-                <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-warning">
-                  Stop Rules
-                </div>
-                <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                  {plan.stopRules.map((rule) => (
-                    <li key={rule} className="flex gap-2">
-                      <span className="text-warning">•</span>
-                      <span>{rule}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <div className="mt-3 text-[11px] text-muted-foreground">
-              {plan.status === "active" ? "Active imported plan." : "Local fallback plan."} External
-              coaching makes the final decision.
-            </div>
-          </div>
         </Surface>
 
         <Surface>
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-semibold tracking-tight">Coach Journal</div>
-            <Link to="/journal" className="text-xs text-muted-foreground hover:text-foreground">
-              View all <ArrowRight className="inline h-3 w-3" />
-            </Link>
-          </div>
-          {s.journal[0] ? (
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                <span>{s.journal[0].date}</span>
-                <span className="rounded-md bg-phoenix/10 px-2 py-0.5 text-phoenix">
-                  +{s.journal[0].xpAwarded} XP
-                </span>
-              </div>
-              <JournalField label="Observation" value={s.journal[0].observation} />
-              <JournalField label="Interpretation" value={s.journal[0].interpretation} />
-              <JournalField label="Decision" value={s.journal[0].decision} />
-              <JournalField label="Next Focus" value={s.journal[0].nextFocus} />
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No entries yet.</p>
-          )}
-
-          {/* Rotating principle card */}
-          <div className="mt-5 rounded-xl border border-border bg-background/40 p-4">
-            <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-phoenix">
-              <Flame className="h-3 w-3" /> Daily Principle
-            </div>
-            <div className="mt-2 text-sm font-medium">{principle.title}</div>
-            <p className="mt-1 text-xs text-muted-foreground">{principle.body}</p>
-          </div>
+          <CoachPlanCard
+            plan={activePlan}
+            coachNote={latestCoachNote}
+            hasMorningCheckIn={Boolean(m)}
+            hasEveningCheckIn={Boolean(evening)}
+            copiedMorningPacket={copiedMorningPacket}
+            onCopyMorningPacket={copyMorningPacket}
+            onImportPlan={() => setImportOpen(true)}
+            onViewPacket={() => setPacketOpen("morning")}
+            onViewPlan={() => setViewPlanOpen(true)}
+            onArchivePlan={() => activePlan && archiveDailyCoachPlan(activePlan.id)}
+          />
         </Surface>
       </div>
 
@@ -530,6 +480,19 @@ function Dashboard() {
       >
         <Sparkles className="h-4 w-4" /> Daily check-in
       </Link>
+      {packetOpen && (
+        <CoachPacketDialog
+          kind={packetOpen}
+          date={selectedDate}
+          onClose={() => setPacketOpen(null)}
+        />
+      )}
+      {importOpen && (
+        <ImportCoachPlanDialog selectedDate={selectedDate} onClose={() => setImportOpen(false)} />
+      )}
+      {viewPlanOpen && activePlan && (
+        <CoachPlanDialog plan={activePlan} onClose={() => setViewPlanOpen(false)} />
+      )}
     </AppShell>
   );
 }
@@ -569,26 +532,251 @@ function QuestRow({ q, onToggle }: { q: DailyQuest; onToggle: () => void }) {
   );
 }
 
-function RecRow({ label, value }: { label: string; value: string }) {
+function CoachPlanCard({
+  plan,
+  coachNote,
+  hasMorningCheckIn,
+  hasEveningCheckIn,
+  copiedMorningPacket,
+  onCopyMorningPacket,
+  onImportPlan,
+  onViewPacket,
+  onViewPlan,
+  onArchivePlan,
+}: {
+  plan: DailyCoachPlan | null;
+  coachNote: CoachNote | null;
+  hasMorningCheckIn: boolean;
+  hasEveningCheckIn: boolean;
+  copiedMorningPacket: boolean;
+  onCopyMorningPacket: () => void;
+  onImportPlan: () => void;
+  onViewPacket: () => void;
+  onViewPlan: () => void;
+  onArchivePlan: () => void;
+}) {
   return (
-    <div className="rounded-lg border border-border/80 bg-background/40 p-3">
-      <dt className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="mt-1 text-sm text-foreground">{value}</dd>
+    <div>
+      {plan ? (
+        <>
+          <div className="mb-3">
+            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-phoenix">
+              <Sparkles className="h-3.5 w-3.5" /> Coach Plan Active
+            </div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              Imported guidance is driving today&apos;s quests and targets.
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <CoachPlanMeta label="Source" value={formatPlanSource(plan)} />
+            <CoachPlanMeta label="Imported time" value={formatImportedTime(plan.importedAt)} />
+            <CoachPlanMeta label="Readiness" value={plan.readiness} />
+            <CoachPlanMeta label="Primary Focus" value={plan.primaryFocus} />
+            <CoachPlanMeta label="Key Stop Rule" value={plan.stopRules[0] ?? "None provided"} />
+          </div>
+
+          <div className="mt-4 grid gap-2">
+            <button
+              onClick={onViewPlan}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm font-medium transition hover:bg-accent"
+            >
+              <Eye className="h-4 w-4" /> View Plan
+            </button>
+            <button
+              onClick={onImportPlan}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm font-medium transition hover:bg-accent"
+            >
+              <RefreshCw className="h-4 w-4" /> Replace Plan
+            </button>
+            <button
+              onClick={onArchivePlan}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
+            >
+              <Archive className="h-4 w-4" /> Archive Plan
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-3">
+            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-phoenix">
+              <Sparkles className="h-3.5 w-3.5" /> Coach Plan
+            </div>
+            <div className="mt-2 text-lg font-semibold tracking-tight">No coach plan imported</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Generate a coach packet and import a plan to update today&apos;s quests.
+            </p>
+          </div>
+
+          <div className="space-y-2 rounded-xl border border-border bg-background/40 p-3 text-xs text-muted-foreground">
+            {!hasMorningCheckIn && <div>Complete morning check-in to generate packet.</div>}
+            {!hasEveningCheckIn && <div>Evening packet available after evening check-in.</div>}
+          </div>
+
+          <div className="mt-4 grid gap-2">
+            <button
+              onClick={onCopyMorningPacket}
+              disabled={!hasMorningCheckIn}
+              className={cn(
+                "inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm font-medium transition hover:bg-accent",
+                !hasMorningCheckIn && "cursor-not-allowed opacity-50 hover:bg-background/40",
+              )}
+            >
+              <Copy className="h-4 w-4" /> {copiedMorningPacket ? "Copied" : "Copy Morning Packet"}
+            </button>
+            <button
+              onClick={onImportPlan}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-phoenix px-3 py-2 text-sm font-medium text-phoenix-foreground shadow-phoenix"
+            >
+              <Upload className="h-4 w-4" /> Import Coach Plan
+            </button>
+            <button
+              onClick={onViewPacket}
+              disabled={!hasMorningCheckIn}
+              className={cn(
+                "inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm font-medium transition hover:bg-accent",
+                !hasMorningCheckIn && "cursor-not-allowed opacity-50 hover:bg-background/40",
+              )}
+            >
+              <Eye className="h-4 w-4" /> View Packet
+            </button>
+          </div>
+        </>
+      )}
+
+      {coachNote && (
+        <div className="mt-5 rounded-xl border border-border bg-background/40 p-4">
+          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Latest Coach Note
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {coachNote.source}
+            {coachNote.author ? ` · ${coachNote.author}` : ""} ·{" "}
+            {formatImportedTime(coachNote.createdAt)}
+          </div>
+          <p className="mt-2 line-clamp-4 text-sm leading-relaxed">{coachNote.body}</p>
+        </div>
+      )}
     </div>
   );
 }
 
-function JournalField({ label, value }: { label: string; value: string }) {
+function CoachPlanMeta({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="rounded-lg border border-border/80 bg-background/40 p-3">
       <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
         {label}
       </div>
-      <p className="mt-0.5 text-sm leading-relaxed">{value}</p>
+      <div className="mt-1 text-sm text-foreground">{value}</div>
     </div>
   );
+}
+
+function CoachPlanDialog({ plan, onClose }: { plan: DailyCoachPlan; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="surface-card flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div>
+            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-phoenix">
+              Coach Plan
+            </div>
+            <div className="text-base font-semibold">{plan.primaryFocus}</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto p-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <CoachPlanMeta label="Source" value={formatPlanSource(plan)} />
+            <CoachPlanMeta label="Imported" value={formatImportedTime(plan.importedAt)} />
+            <CoachPlanMeta label="Readiness" value={plan.readiness} />
+            <CoachPlanMeta label="Status" value={plan.status} />
+          </div>
+
+          {plan.targets.length > 0 && (
+            <section className="mt-5">
+              <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                Targets
+              </div>
+              <div className="mt-2 grid gap-2">
+                {plan.targets.map((target) => (
+                  <div
+                    key={target.id}
+                    className="rounded-lg border border-border bg-background/40 p-3"
+                  >
+                    <div className="text-sm font-medium">{target.label}</div>
+                    <div className="mt-1 text-sm text-muted-foreground">{target.value}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {plan.stopRules.length > 0 && (
+            <section className="mt-5">
+              <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-warning">
+                Stop Rules
+              </div>
+              <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
+                {plan.stopRules.map((rule) => (
+                  <li key={rule} className="flex gap-2">
+                    <span className="text-warning">•</span>
+                    <span>{rule}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {plan.eveningCheckInFocus.length > 0 && (
+            <section className="mt-5">
+              <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                Evening Check-In Focus
+              </div>
+              <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
+                {plan.eveningCheckInFocus.map((focus) => (
+                  <li key={focus} className="flex gap-2">
+                    <span className="text-phoenix">•</span>
+                    <span>{focus}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {plan.notes && (
+            <section className="mt-5 rounded-lg border border-border bg-background/40 p-3">
+              <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                Notes
+              </div>
+              <p className="mt-2 text-sm leading-relaxed">{plan.notes}</p>
+            </section>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatPlanSource(plan: DailyCoachPlan) {
+  return plan.authorName ? `${plan.source} · ${plan.authorName}` : plan.source;
+}
+
+function formatImportedTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function MetricTile({
