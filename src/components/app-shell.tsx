@@ -14,7 +14,14 @@ import {
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+type NavEntry = {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  exact?: boolean;
+};
+
+const NAV: NavEntry[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/check-in", label: "Check-In", icon: ClipboardCheck },
   { to: "/missions", label: "Missions", icon: Target },
@@ -24,7 +31,7 @@ const NAV = [
   { to: "/glossary", label: "Glossary", icon: Library },
   { to: "/principles", label: "Principles", icon: Compass },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
-] as const;
+];
 
 // Routes shown in the mobile bottom bar (compact subset).
 const MOBILE_NAV = NAV.filter((n) =>
