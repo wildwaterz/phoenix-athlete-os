@@ -31,8 +31,11 @@ import {
   setState,
   todaysWinForDate,
   trendFor,
+  updatePrescribedTaskCompletion,
   upsertRecoveryIqEvent,
   type MetricId,
+  type PrescribedTask,
+  type PrescribedTaskCompletionStatus,
   usePhoenix,
 } from "@/lib/phoenix-data";
 import {
@@ -128,7 +131,7 @@ function Dashboard() {
     setState((prev) => {
       const dateQuests = dailyQuestsForDate(prev, selectedDate);
       const q = dateQuests.find((x) => x.id === id);
-      if (!q) return prev;
+      if (!q || q.prescribedTasks?.length) return prev;
 
       const done = !q.done;
       const questCompletions = {
@@ -439,7 +442,7 @@ function Dashboard() {
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold tracking-tight">Today's Quests</div>
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-              Tap to complete
+              Complete prescribed tasks
             </div>
           </div>
 
@@ -449,7 +452,24 @@ function Dashboard() {
           </div>
           <ul className="space-y-2">
             {mainQuests.map((q) => (
-              <QuestRow key={q.id} q={q} onToggle={() => toggleQuest(q.id)} />
+              <QuestRow
+                key={q.id}
+                q={q}
+                onToggle={() => toggleQuest(q.id)}
+                onTaskStatusChange={(task, status) =>
+                  updatePrescribedTaskCompletion(selectedDate, task.id, {
+                    status,
+                    actualSets:
+                      status === "completed" ? task.prescription.sets : task.completion.actualSets,
+                    actualReps:
+                      status === "completed" ? task.prescription.reps : task.completion.actualReps,
+                    actualDurationMinutes:
+                      status === "completed"
+                        ? task.prescription.durationMinutes
+                        : task.completion.actualDurationMinutes,
+                  })
+                }
+              />
             ))}
           </ul>
 
@@ -461,7 +481,28 @@ function Dashboard() {
               </div>
               <ul className="space-y-2">
                 {sideQuests.map((q) => (
-                  <QuestRow key={q.id} q={q} onToggle={() => toggleQuest(q.id)} />
+                  <QuestRow
+                    key={q.id}
+                    q={q}
+                    onToggle={() => toggleQuest(q.id)}
+                    onTaskStatusChange={(task, status) =>
+                      updatePrescribedTaskCompletion(selectedDate, task.id, {
+                        status,
+                        actualSets:
+                          status === "completed"
+                            ? task.prescription.sets
+                            : task.completion.actualSets,
+                        actualReps:
+                          status === "completed"
+                            ? task.prescription.reps
+                            : task.completion.actualReps,
+                        actualDurationMinutes:
+                          status === "completed"
+                            ? task.prescription.durationMinutes
+                            : task.completion.actualDurationMinutes,
+                      })
+                    }
+                  />
                 ))}
               </ul>
             </>
@@ -705,7 +746,70 @@ function DashboardMetricTile({
   }
 }
 
-function QuestRow({ q, onToggle }: { q: DailyQuest; onToggle: () => void }) {
+function QuestRow({
+  q,
+  onToggle,
+  onTaskStatusChange,
+}: {
+  q: DailyQuest;
+  onToggle: () => void;
+  onTaskStatusChange: (task: PrescribedTask, status: PrescribedTaskCompletionStatus) => void;
+}) {
+  if (q.prescribedTasks?.length) {
+    return (
+      <li
+        className={cn(
+          "rounded-xl border border-border bg-background/40 px-3 py-3",
+          q.done && "opacity-80",
+        )}
+      >
+        <details open>
+          <summary className="cursor-pointer list-none">
+            <div className="flex items-center gap-3">
+              {q.done ? (
+                <CheckCircle2 className="h-5 w-5 text-success" />
+              ) : (
+                <Circle className="h-5 w-5 text-muted-foreground" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className={cn("block text-sm", q.done && "text-muted-foreground")}>
+                  {q.label}
+                </span>
+                {q.sourceLabel && (
+                  <span className="mt-1 block text-[11px] font-medium uppercase tracking-[0.14em] text-phoenix">
+                    {q.sourceLabel}
+                  </span>
+                )}
+                <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                  {q.reason}
+                </span>
+              </span>
+              <span
+                className={cn(
+                  "rounded-md px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em]",
+                  q.kind === "side"
+                    ? "bg-muted text-muted-foreground"
+                    : "bg-phoenix/10 text-phoenix",
+                )}
+              >
+                +{q.xp} XP
+              </span>
+            </div>
+          </summary>
+          <div className="mt-3 space-y-3 border-t border-border/70 pt-3">
+            {q.prescribedTasks.map((task) => (
+              <PrescribedTaskRow
+                key={task.id}
+                task={task}
+                onStatusChange={(status) => onTaskStatusChange(task, status)}
+              />
+            ))}
+          </div>
+        </details>
+      </li>
+    );
+  }
+
   return (
     <li>
       <button
@@ -748,6 +852,73 @@ function QuestRow({ q, onToggle }: { q: DailyQuest; onToggle: () => void }) {
       </button>
     </li>
   );
+}
+
+function PrescribedTaskRow({
+  task,
+  onStatusChange,
+}: {
+  task: PrescribedTask;
+  onStatusChange: (status: PrescribedTaskCompletionStatus) => void;
+}) {
+  const status = task.completion.status;
+  return (
+    <div className="rounded-lg border border-border/80 bg-card/40 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{task.title}</div>
+          <div className="mt-1 space-y-1 text-xs leading-relaxed text-muted-foreground">
+            {prescriptionLines(task).map((line) => (
+              <div key={line}>{line}</div>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {(
+            [
+              ["completed", "Done"],
+              ["partial", "Partial"],
+              ["skipped", "Skip"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onStatusChange(status === value ? "not_started" : value)}
+              className={cn(
+                "rounded-md border px-2 py-1 text-[11px] font-medium transition",
+                status === value
+                  ? "border-phoenix bg-phoenix/15 text-phoenix"
+                  : "border-border text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {task.stopRules.length > 0 && (
+        <div className="mt-2 text-xs leading-relaxed text-warning">
+          Stop: {task.stopRules.join(" · ")}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function prescriptionLines(task: PrescribedTask): string[] {
+  const p = task.prescription;
+  const dose: string[] = [];
+  if (p.sets) dose.push(`${p.sets} sets`);
+  if (p.reps) dose.push(`${p.reps} reps`);
+  if (p.holdSeconds) dose.push(`${p.holdSeconds}s holds`);
+  if (p.durationMinutes) dose.push(`${p.durationMinutes} min`);
+  const lines = [dose.join(" · ")].filter(Boolean);
+  if (p.frequency) lines.push(p.frequency);
+  if (p.effortTarget) lines.push(`Effort: ${p.effortTarget}`);
+  if (p.rangeInstruction) lines.push(p.rangeInstruction);
+  if (p.qualityTarget) lines.push(`Goal: ${p.qualityTarget}`);
+  return lines.length ? lines : ["Complete as prescribed."];
 }
 
 function CoachPlanCard({
@@ -932,6 +1103,36 @@ function CoachPlanDialog({ plan, onClose }: { plan: DailyCoachPlan; onClose: () 
                   >
                     <div className="text-sm font-medium">{target.label}</div>
                     <div className="mt-1 text-sm text-muted-foreground">{target.value}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {plan.quests.length > 0 && (
+            <section className="mt-5">
+              <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                Prescribed Tasks
+              </div>
+              <div className="mt-2 space-y-3">
+                {plan.quests.map((quest) => (
+                  <div
+                    key={quest.id}
+                    className="rounded-lg border border-border bg-background/40 p-3"
+                  >
+                    <div className="text-sm font-medium">{quest.label}</div>
+                    <div className="mt-2 space-y-2">
+                      {(quest.prescribedTasks ?? []).map((task) => (
+                        <div key={task.id} className="rounded-md border border-border/70 p-2">
+                          <div className="text-sm">{task.title}</div>
+                          <div className="mt-1 space-y-1 text-xs leading-relaxed text-muted-foreground">
+                            {prescriptionLines(task).map((line) => (
+                              <div key={line}>{line}</div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>

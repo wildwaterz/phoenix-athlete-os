@@ -19,8 +19,47 @@ const exampleJson = `{
     { "label": "ROM", "value": "Comfortable extension and heel slides" }
   ],
   "quests": [
-    { "id": "quad-activation", "label": "Quad activation sets", "kind": "main", "xp": 15 },
-    { "id": "evening-check-in", "label": "Evening check-in", "kind": "main", "xp": 10 }
+    {
+      "id": "activation-rom-work",
+      "label": "Activation + ROM work",
+      "objectiveGroup": "activation_rom",
+      "kind": "main",
+      "xp": 20,
+      "prescribedTasks": [
+        {
+          "id": "quad-sets",
+          "title": "Quad sets",
+          "category": "activation",
+          "prescription": {
+            "sets": 3,
+            "reps": 10,
+            "holdSeconds": 5,
+            "effortTarget": "5-6/10",
+            "qualityTarget": "Repeatable contraction, no pain spike"
+          },
+          "stopRules": ["Stop if pain rises above 4/10 or contraction fades sharply."]
+        },
+        {
+          "id": "heel-slides",
+          "title": "Heel slides",
+          "category": "rom",
+          "prescription": {
+            "sets": 2,
+            "reps": 10,
+            "rangeInstruction": "Comfortable range only; no strap pulling or forcing end range",
+            "qualityTarget": "Easy flexion exposure, not max range"
+          },
+          "stopRules": ["Stop if sharp pain, pinching, or swelling response appears."]
+        }
+      ]
+    },
+    {
+      "id": "evening-check-in",
+      "label": "Evening response check-in",
+      "objectiveGroup": "evening_response",
+      "kind": "main",
+      "xp": 10
+    }
   ],
   "stopRules": [
     "Stop if pain rises above 4/10.",

@@ -4,6 +4,7 @@ import {
   checkInFieldLabel,
   createDefaultEveningCheckIn,
   createDefaultMorningCheckIn,
+  dailyQuestsForDate,
   eveningCheckInFieldsForPhase,
   getEveningForDate,
   getLocalDateKey,
@@ -12,10 +13,14 @@ import {
   phaseForDate,
   saveEveningCheckIn,
   saveMorningCheckIn,
+  updatePrescribedTaskCompletion,
   type CheckInFieldId,
   type EveningCheckIn,
   type FlexionStatus,
   type MorningCheckIn,
+  type PrescribedTask,
+  type PrescribedTaskCompletion,
+  type PrescribedTaskCompletionStatus,
   type RangeResponse,
   usePhoenix,
 } from "@/lib/phoenix-data";
@@ -542,6 +547,153 @@ function renderEveningField(
   }
 }
 
+function TaskNumberInput({
+  value,
+  onChange,
+  min = 0,
+  max,
+}: {
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  min?: number;
+  max?: number;
+}) {
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      value={value ?? ""}
+      onChange={(event) =>
+        onChange(event.target.value === "" ? undefined : Number(event.target.value))
+      }
+      className="w-full rounded-lg border border-border bg-background/40 px-2 py-1.5 text-sm outline-none focus:border-phoenix"
+    />
+  );
+}
+
+function taskPrescriptionSummary(task: PrescribedTask): string {
+  const p = task.prescription;
+  const dose = [
+    p.sets ? `${p.sets} sets` : "",
+    p.reps ? `${p.reps} reps` : "",
+    p.holdSeconds ? `${p.holdSeconds}s holds` : "",
+    p.durationMinutes ? `${p.durationMinutes} min` : "",
+  ].filter(Boolean);
+  return [
+    dose.join(" · "),
+    p.frequency,
+    p.effortTarget ? `Effort ${p.effortTarget}` : "",
+    p.rangeInstruction,
+    p.qualityTarget ? `Goal: ${p.qualityTarget}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function PrescribedTaskResponseSection({
+  tasks,
+  e,
+  updateTask,
+}: {
+  tasks: PrescribedTask[];
+  e: EveningCheckIn;
+  updateTask: (task: PrescribedTask, patch: Partial<PrescribedTaskCompletion>) => void;
+}) {
+  if (tasks.length === 0) return null;
+  return (
+    <div className="mb-6 rounded-xl border border-border bg-background/30 p-4">
+      <div className="mb-3">
+        <div className="text-sm font-semibold tracking-tight">Prescribed task responses</div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          Record what actually happened so tomorrow's plan can adjust from adherence and tolerance.
+        </div>
+      </div>
+      <div className="space-y-3">
+        {tasks.map((task) => {
+          const completion = e.taskCompletions?.[task.id] ?? task.completion;
+          return (
+            <div key={task.id} className="rounded-lg border border-border/80 bg-card/40 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{task.title}</div>
+                  <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {taskPrescriptionSummary(task)}
+                  </div>
+                </div>
+                <select
+                  value={completion.status}
+                  onChange={(event) =>
+                    updateTask(task, {
+                      status: event.target.value as PrescribedTaskCompletionStatus,
+                    })
+                  }
+                  className="rounded-lg border border-border bg-background/40 px-2 py-1.5 text-sm outline-none focus:border-phoenix"
+                >
+                  <option value="not_started">Not started</option>
+                  <option value="completed">Completed</option>
+                  <option value="partial">Partial</option>
+                  <option value="skipped">Skipped</option>
+                </select>
+              </div>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <Field label="Actual sets">
+                  <TaskNumberInput
+                    value={completion.actualSets}
+                    onChange={(value) => updateTask(task, { actualSets: value })}
+                  />
+                </Field>
+                <Field label="Actual reps">
+                  <TaskNumberInput
+                    value={completion.actualReps}
+                    onChange={(value) => updateTask(task, { actualReps: value })}
+                  />
+                </Field>
+                <Field label="Actual minutes">
+                  <TaskNumberInput
+                    value={completion.actualDurationMinutes}
+                    onChange={(value) => updateTask(task, { actualDurationMinutes: value })}
+                  />
+                </Field>
+                <Field label="Pain during">
+                  <TaskNumberInput
+                    value={completion.painDuring}
+                    max={10}
+                    onChange={(value) => updateTask(task, { painDuring: value })}
+                  />
+                </Field>
+                <Field label="Pain after">
+                  <TaskNumberInput
+                    value={completion.painAfter}
+                    max={10}
+                    onChange={(value) => updateTask(task, { painAfter: value })}
+                  />
+                </Field>
+                <Field label="Quality" hint="1 — 5">
+                  <TaskNumberInput
+                    value={completion.qualityScore}
+                    min={1}
+                    max={5}
+                    onChange={(value) => updateTask(task, { qualityScore: value })}
+                  />
+                </Field>
+              </div>
+              <div className="mt-3">
+                <TextArea
+                  value={completion.notes ?? ""}
+                  onChange={(event) => updateTask(task, { notes: event.target.value })}
+                  placeholder="What changed, what limited the task, or what felt easy?"
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CheckInPage() {
   const s = usePhoenix();
   const today = getLocalDateKey();
@@ -557,6 +709,9 @@ function CheckInPage() {
   const eveningFieldIds = eveningCheckInFieldsForPhase(phase);
   const m = savedMorning ?? createDefaultMorningCheckIn(selectedDate, phase.id);
   const e = savedEvening ?? createDefaultEveningCheckIn(selectedDate, phase.id);
+  const prescribedTasks = dailyQuestsForDate(s, selectedDate)
+    .flatMap((quest) => quest.prescribedTasks ?? [])
+    .filter((task) => task.category !== "check_in" && task.category !== "reflection");
   const hasMorning = Boolean(savedMorning);
   const hasEvening = Boolean(savedEvening);
 
@@ -576,6 +731,21 @@ function CheckInPage() {
       localDate: selectedDate,
       phaseId: phase.id,
     });
+  const updateTask = (task: PrescribedTask, patch: Partial<PrescribedTaskCompletion>) => {
+    const previous = e.taskCompletions?.[task.id] ?? task.completion;
+    const next = {
+      ...previous,
+      ...patch,
+      status: patch.status ?? previous.status,
+    };
+    updatePrescribedTaskCompletion(selectedDate, task.id, next);
+    updateEvening({
+      taskCompletions: {
+        ...(e.taskCompletions ?? {}),
+        [task.id]: next,
+      },
+    });
+  };
 
   return (
     <AppShell>
@@ -660,6 +830,7 @@ function CheckInPage() {
         </Surface>
       ) : (
         <Surface>
+          <PrescribedTaskResponseSection tasks={prescribedTasks} e={e} updateTask={updateTask} />
           <div className="grid gap-5 md:grid-cols-2">
             {eveningFieldIds.map((field) => (
               <Fragment key={field}>{renderEveningField(field, e, updateEvening)}</Fragment>

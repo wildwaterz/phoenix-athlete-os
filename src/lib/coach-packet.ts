@@ -1,4 +1,4 @@
-import type { CoachPacket, PhoenixState } from "./phoenix-data";
+import type { CoachPacket, PhoenixState, PrescribedTask } from "./phoenix-data";
 import {
   activeMissions,
   activeRecoveryTracksForPhase,
@@ -98,7 +98,9 @@ export function buildPacketJson(
       reason: q.reason,
       details: q.details,
       sourceLabel: q.sourceLabel,
+      prescribedTasks: q.prescribedTasks,
     })),
+    prescribedTasks: dailyQuests.flatMap((q) => q.prescribedTasks ?? []),
     completedToday: dailyQuests.filter((q) => q.done).map((q) => q.label),
     pendingToday: dailyQuests.filter((q) => !q.done).map((q) => q.label),
     coachNotesRecent: coachNotes.slice(0, 3),
@@ -132,6 +134,10 @@ export function buildPacketMarkdown(
   const dailyCoachPlan = dailyCoachPlanForDate(s, isoDate);
   const smallWin = smallWinForDate(s, isoDate);
   const dailyQuests = dailyQuestsForDate(s, isoDate);
+  const prescribedTasks = dailyQuests.flatMap((q) => q.prescribedTasks ?? []);
+  const previousTasks = previousResponse
+    ? dailyQuestsForDate(s, previousResponse.date).flatMap((q) => q.prescribedTasks ?? [])
+    : [];
 
   const lines: string[] = [];
   lines.push(`# Phoenix OS — ${kind === "morning" ? "Morning" : "Evening"} Coach Packet`);
@@ -207,6 +213,14 @@ export function buildPacketMarkdown(
     lines.push("");
   }
 
+  if (previousTasks.length > 0) {
+    lines.push(`## Previous Prescribed Task Responses`);
+    previousTasks.forEach((task) => {
+      lines.push(`- ${task.title}: ${formatTaskCompletion(task)}`);
+    });
+    lines.push("");
+  }
+
   if (kind === "evening" && e) {
     lines.push(`## Evening Response Check-In`);
     lines.push(`- Quests completed: ${e.exercisesCompleted || "—"}`);
@@ -219,6 +233,28 @@ export function buildPacketMarkdown(
     lines.push(`- Concerning symptoms: ${e.concerningSymptoms || "—"}`);
     lines.push(`- Milestones touched: ${e.milestones || "—"}`);
     lines.push(`- Notes: ${e.notes || "—"}`);
+    lines.push("");
+  }
+
+  if (kind === "evening" && prescribedTasks.length > 0) {
+    lines.push(`## Today's Prescribed Task Responses`);
+    prescribedTasks.forEach((task) => {
+      lines.push(`- ${task.title}: ${formatTaskCompletion(task)}`);
+    });
+    lines.push("");
+  }
+
+  if (prescribedTasks.length > 0) {
+    lines.push(`## Today's Prescribed Tasks`);
+    dailyQuests.forEach((quest) => {
+      if (!quest.prescribedTasks?.length) return;
+      lines.push(`**${quest.label}**`);
+      quest.prescribedTasks.forEach((task) => {
+        lines.push(`- ${task.title}`);
+        prescriptionLines(task).forEach((line) => lines.push(`  - ${line}`));
+        if (task.stopRules.length) lines.push(`  - Stop: ${task.stopRules.join("; ")}`);
+      });
+    });
     lines.push("");
   }
 
@@ -276,11 +312,64 @@ export function buildPacketMarkdown(
   lines.push(`## Questions for Coach`);
   lines.push(`- Is yesterday's response good enough to add load today?`);
   lines.push(`- Should we prioritize extension or activation this week?`);
+  lines.push(`- Which prescribed task should repeat, progress slightly, reduce, or be removed?`);
+  lines.push("");
+  lines.push(`## Progression Rules For Tomorrow`);
+  lines.push(
+    `- Completed and tolerated with stable next-morning baseline: repeat or consider tiny progression.`,
+  );
+  lines.push(`- Partial but tolerated: repeat the same dose.`);
+  lines.push(`- Completed but symptoms worsened: reduce dose.`);
+  lines.push(
+    `- Sharp pain, pinching, worse gait, or swelling increase that does not settle: remove or modify the provoking task.`,
+  );
+  lines.push(
+    `- Do not let swelling level alone dominate progression; use adherence plus response.`,
+  );
   lines.push("");
   lines.push(`## Current Concerns`);
   lines.push(m?.notes || "None reported.");
 
   return lines.join("\n");
+}
+
+function prescriptionLines(task: PrescribedTask): string[] {
+  const p = task.prescription;
+  const dose = [
+    p.sets ? `${p.sets} sets` : "",
+    p.reps ? `${p.reps} reps` : "",
+    p.holdSeconds ? `${p.holdSeconds}s holds` : "",
+    p.durationMinutes ? `${p.durationMinutes} min` : "",
+  ].filter(Boolean);
+  return [
+    dose.join(" · "),
+    p.frequency,
+    p.effortTarget ? `Effort: ${p.effortTarget}` : "",
+    p.rangeInstruction,
+    p.qualityTarget ? `Goal: ${p.qualityTarget}` : "",
+  ].filter((line): line is string => Boolean(line));
+}
+
+function formatTaskCompletion(task: PrescribedTask): string {
+  const c = task.completion;
+  const actual = [
+    c.actualSets == null ? "" : `${c.actualSets} sets`,
+    c.actualReps == null ? "" : `${c.actualReps} reps`,
+    c.actualDurationMinutes == null ? "" : `${c.actualDurationMinutes} min`,
+  ].filter(Boolean);
+  const response = [
+    c.painDuring == null ? "" : `pain during ${c.painDuring}/10`,
+    c.painAfter == null ? "" : `pain after ${c.painAfter}/10`,
+    c.qualityScore == null ? "" : `quality ${c.qualityScore}/5`,
+  ].filter(Boolean);
+  return [
+    c.status,
+    actual.length ? `actual ${actual.join(", ")}` : "",
+    response.length ? response.join(", ") : "",
+    c.notes ? `notes: ${c.notes}` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
 }
 
 function formatPacketValue(value: string | undefined) {
