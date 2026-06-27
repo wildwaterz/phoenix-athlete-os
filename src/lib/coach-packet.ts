@@ -9,8 +9,11 @@ import {
   dailyCoachPlanForDate,
   dailyQuestsForDate,
   daysPostOp,
+  getDetectedTimeZone,
   getEveningForDate,
+  getLocalDateKey,
   getMorningForDate,
+  getUtcTimestamp,
   previousEvening,
   previousMorning,
   phaseForDate,
@@ -18,7 +21,6 @@ import {
   recoveryIqForState,
   recoveryIqXpForState,
   smallWinForDate,
-  todayIso,
 } from "./phoenix-data";
 
 export type PacketKind = "morning" | "evening";
@@ -26,8 +28,9 @@ export type PacketKind = "morning" | "evening";
 export function buildPacketJson(
   kind: PacketKind,
   s: PhoenixState,
-  isoDate = todayIso(),
+  isoDate = getLocalDateKey(),
 ): CoachPacket {
+  const timestampUtc = getUtcTimestamp();
   const campaign = currentCampaign(s);
   const phase = phaseForDate(s, isoDate);
   const mission = currentMission(s);
@@ -48,7 +51,9 @@ export function buildPacketJson(
     id: `packet-${kind}-${isoDate}`,
     kind,
     date: isoDate,
-    generatedAt: new Date().toISOString(),
+    localDate: isoDate,
+    timestampUtc,
+    generatedAt: timestampUtc,
     athlete: s.athleteName,
     campaign: {
       id: campaign.id,
@@ -110,7 +115,7 @@ export function buildPacketJson(
 export function buildPacketMarkdown(
   kind: PacketKind,
   s: PhoenixState,
-  isoDate = todayIso(),
+  isoDate = getLocalDateKey(),
 ): string {
   const campaign = currentCampaign(s);
   const phase = phaseForDate(s, isoDate);
@@ -131,6 +136,7 @@ export function buildPacketMarkdown(
   const lines: string[] = [];
   lines.push(`# Phoenix OS — ${kind === "morning" ? "Morning" : "Evening"} Coach Packet`);
   lines.push(`**Date:** ${isoDate}  `);
+  lines.push(`**Timezone:** ${getDetectedTimeZone()}  `);
   lines.push(`**Athlete:** ${s.athleteName}  `);
   lines.push(`**Campaign:** ${campaign.name} · Day ${daysPostOp(s, isoDate)}  `);
   lines.push(`**Phase:** ${phase.name}  `);

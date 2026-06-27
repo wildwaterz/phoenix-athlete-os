@@ -6,12 +6,12 @@ import {
   createDefaultMorningCheckIn,
   eveningCheckInFieldsForPhase,
   getEveningForDate,
+  getLocalDateKey,
   getMorningForDate,
   morningCheckInFieldsForPhase,
   phaseForDate,
   saveEveningCheckIn,
   saveMorningCheckIn,
-  todayIso,
   type CheckInFieldId,
   type EveningCheckIn,
   type FlexionStatus,
@@ -544,7 +544,7 @@ function renderEveningField(
 
 function CheckInPage() {
   const s = usePhoenix();
-  const today = todayIso();
+  const today = getLocalDateKey();
   const [selectedDate, setSelectedDate] = useState(today);
   const [tab, setTab] = useState<"morning" | "evening">("morning");
   const [packetOpen, setPacketOpen] = useState<null | "morning" | "evening">(null);
@@ -561,9 +561,21 @@ function CheckInPage() {
   const hasEvening = Boolean(savedEvening);
 
   const updateMorning = (patch: Partial<typeof m>) =>
-    saveMorningCheckIn({ ...m, ...patch, date: selectedDate, phaseId: phase.id });
+    saveMorningCheckIn({
+      ...m,
+      ...patch,
+      date: selectedDate,
+      localDate: selectedDate,
+      phaseId: phase.id,
+    });
   const updateEvening = (patch: Partial<typeof e>) =>
-    saveEveningCheckIn({ ...e, ...patch, date: selectedDate, phaseId: phase.id });
+    saveEveningCheckIn({
+      ...e,
+      ...patch,
+      date: selectedDate,
+      localDate: selectedDate,
+      phaseId: phase.id,
+    });
 
   return (
     <AppShell>

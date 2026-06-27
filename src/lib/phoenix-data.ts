@@ -191,6 +191,8 @@ export interface Milestone {
 
 export interface MorningCheckIn {
   date: string;
+  localDate?: string;
+  timestampUtc?: string;
   phaseId?: PhaseId;
   pain: number;
   swelling: number;
@@ -212,6 +214,8 @@ export interface MorningCheckIn {
 
 export interface EveningCheckIn {
   date: string;
+  localDate?: string;
+  timestampUtc?: string;
   phaseId?: PhaseId;
   exercisesCompleted: string;
   painDuring: number;
@@ -235,6 +239,8 @@ export interface EveningCheckIn {
 export interface CheckIn {
   id: string;
   date: string;
+  localDate?: string;
+  timestampUtc?: string;
   phaseId: PhaseId;
   morning?: MorningCheckIn;
   evening?: EveningCheckIn;
@@ -261,6 +267,8 @@ export type QuestStatus = "pending" | "complete" | "skipped";
 export interface Quest {
   id: string;
   date: string;
+  localDate?: string;
+  timestampUtc?: string;
   label: string;
   title?: string;
   done: boolean;
@@ -311,6 +319,8 @@ export type CoachNotePriority = "normal" | "important" | "override";
 export interface CoachNote {
   id: string;
   date: string;
+  localDate?: string;
+  timestampUtc?: string;
   source: CoachNoteSource;
   noteType: CoachNoteType;
   authorName?: string;
@@ -329,6 +339,8 @@ export interface CoachNote {
 export interface AthleteNote {
   id: string;
   date: string;
+  localDate?: string;
+  timestampUtc?: string;
   body: string;
   relatedPhaseId?: PhaseId;
   relatedMissionIds?: MissionId[];
@@ -349,7 +361,9 @@ export type RecoveryIqEventSourceType =
 export interface RecoveryIqEvent {
   id: string;
   date: string;
+  localDate?: string;
   timestamp: string;
+  timestampUtc?: string;
   sourceType: RecoveryIqEventSourceType;
   sourceId?: string;
   title: string;
@@ -363,6 +377,8 @@ export type SmallWinSource = "rule" | "manual" | "daily-coach-plan";
 export interface SmallWin {
   id: string;
   date: string;
+  localDate?: string;
+  timestampUtc?: string;
   title: string;
   description: string;
   source: SmallWinSource;
@@ -384,6 +400,8 @@ export type DailyCoachPlanStatus = "draft" | "active" | "archived" | "replaced";
 export interface DailyCoachPlan {
   id: string;
   date: string;
+  localDate?: string;
+  timestampUtc?: string;
   source: DailyCoachPlanSource;
   authorName?: string;
   importedFromNoteId?: string;
@@ -417,6 +435,8 @@ export interface CoachPacket {
   id: string;
   kind: CoachPacketKind;
   date: string;
+  localDate?: string;
+  timestampUtc?: string;
   generatedAt: string;
   athlete: string;
   campaign: {
@@ -503,8 +523,30 @@ export interface PhoenixState {
 }
 
 // ---------- seed ----------
-export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+function padDatePart(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+export function getLocalDateKey(date = new Date()): string {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
+}
+
+export function getUtcTimestamp(date = new Date()): string {
+  return date.toISOString();
+}
+
+export function getDetectedTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "unknown";
+}
+
+function localDateFromTimestampUtc(value: string | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : getLocalDateKey(date);
+}
+
+function dailyRecordDate(record: { date: string; localDate?: string }): string {
+  return record.localDate || record.date;
 }
 
 export const RECOVERY_TRACKS: RecoveryTrack[] = [
@@ -1339,7 +1381,7 @@ const seedMilestones: Milestone[] = [
 function isoDaysAgo(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return getLocalDateKey(d);
 }
 
 export function createDefaultMorningCheckIn(
@@ -1348,6 +1390,8 @@ export function createDefaultMorningCheckIn(
 ): MorningCheckIn {
   return {
     date,
+    localDate: date,
+    timestampUtc: getUtcTimestamp(),
     phaseId,
     pain: 2,
     swelling: 1,
@@ -1371,6 +1415,8 @@ export function createDefaultEveningCheckIn(
 ): EveningCheckIn {
   return {
     date,
+    localDate: date,
+    timestampUtc: getUtcTimestamp(),
     phaseId,
     exercisesCompleted: "",
     painDuring: 2,
@@ -1447,6 +1493,8 @@ function createCheckIn(date: string, morning?: MorningCheckIn, evening?: Evening
   return {
     id: `check-in-${date}`,
     date,
+    localDate: date,
+    timestampUtc: morning?.timestampUtc ?? evening?.timestampUtc ?? getUtcTimestamp(),
     phaseId: morning?.phaseId ?? evening?.phaseId ?? "activation-early-rom",
     morning,
     evening,
@@ -1461,8 +1509,13 @@ const seedRecoveryIqEvents: RecoveryIqEvent[] = [];
 
 const seedSmallWins: SmallWin[] = [];
 
+const seedTodayLocalDate = getLocalDateKey();
+const seedTimestampUtc = getUtcTimestamp();
+
 const seedTodayMorning: MorningCheckIn = {
-  date: todayIso(),
+  date: seedTodayLocalDate,
+  localDate: seedTodayLocalDate,
+  timestampUtc: seedTimestampUtc,
   phaseId: "activation-early-rom",
   pain: 2,
   swelling: 1,
@@ -1500,7 +1553,7 @@ const initial: PhoenixState = {
   recoveryIqXp: 0,
   morning: seedTodayMorning,
   evening: null,
-  checkIns: [createCheckIn(todayIso(), seedTodayMorning, undefined)],
+  checkIns: [createCheckIn(seedTodayLocalDate, seedTodayMorning, undefined)],
   history: { morning: seedMorningHistory, evening: [] },
   milestones: seedMilestones,
   todayQuests: [],
@@ -1569,9 +1622,14 @@ function normalizeCoachNote(
   note: Partial<CoachNote> & { author?: string; body?: string },
 ): CoachNote {
   const fullNote = note.fullNote ?? note.body ?? "";
+  const createdAt = note.createdAt ?? getUtcTimestamp();
+  const localDate =
+    note.localDate || note.date || localDateFromTimestampUtc(createdAt) || getLocalDateKey();
   return {
     id: note.id ?? `coach-note-${Date.now()}`,
-    date: note.date ?? todayIso(),
+    date: localDate,
+    localDate,
+    timestampUtc: note.timestampUtc ?? createdAt,
     source: normalizeCoachNoteSource(note.source),
     noteType: normalizeCoachNoteType(note.noteType),
     authorName: note.authorName ?? note.author,
@@ -1584,7 +1642,39 @@ function normalizeCoachNote(
     relatedMissionIds: note.relatedMissionIds,
     relatedTrackIds: note.relatedTrackIds,
     tags: note.tags ?? [],
-    createdAt: note.createdAt ?? new Date().toISOString(),
+    createdAt,
+  };
+}
+
+function normalizeAthleteNote(note: Partial<AthleteNote>): AthleteNote {
+  const createdAt = note.createdAt ?? getUtcTimestamp();
+  const localDate =
+    note.localDate || note.date || localDateFromTimestampUtc(createdAt) || getLocalDateKey();
+  return {
+    id: note.id ?? `athlete-note-${Date.now()}`,
+    date: localDate,
+    localDate,
+    timestampUtc: note.timestampUtc ?? createdAt,
+    body: note.body ?? "",
+    relatedPhaseId: note.relatedPhaseId,
+    relatedMissionIds: note.relatedMissionIds,
+    tags: note.tags ?? [],
+    createdAt,
+  };
+}
+
+function normalizeCoachPacket(packet: Partial<CoachPacket>): CoachPacket {
+  const timestampUtc = packet.timestampUtc ?? packet.generatedAt ?? getUtcTimestamp();
+  const localDate =
+    packet.localDate || packet.date || localDateFromTimestampUtc(timestampUtc) || getLocalDateKey();
+  return {
+    ...(packet as CoachPacket),
+    id: packet.id ?? `packet-${packet.kind ?? "morning"}-${localDate}`,
+    kind: packet.kind ?? "morning",
+    date: localDate,
+    localDate,
+    timestampUtc,
+    generatedAt: packet.generatedAt ?? timestampUtc,
   };
 }
 
@@ -1611,13 +1701,16 @@ function normalizeRecoveryIqEvent(value: unknown): RecoveryIqEvent | null {
   const sourceType = normalizeRecoveryIqEventSourceType(record.sourceType);
   if (!sourceType) return null;
 
-  const date =
-    stringValue(record.date) ||
-    stringValue(record.timestamp).slice(0, 10) ||
-    stringValue(record.createdAt).slice(0, 10) ||
-    todayIso();
   const timestamp =
-    stringValue(record.timestamp) || stringValue(record.createdAt) || new Date().toISOString();
+    stringValue(record.timestampUtc) ||
+    stringValue(record.timestamp) ||
+    stringValue(record.createdAt) ||
+    getUtcTimestamp();
+  const date =
+    stringValue(record.localDate) ||
+    stringValue(record.date) ||
+    localDateFromTimestampUtc(timestamp) ||
+    getLocalDateKey();
   const title = stringValue(record.title);
   const xpAmount =
     typeof record.xpAmount === "number" && Number.isFinite(record.xpAmount) ? record.xpAmount : 0;
@@ -1627,7 +1720,9 @@ function normalizeRecoveryIqEvent(value: unknown): RecoveryIqEvent | null {
       rawId ||
       recoveryIqEventId(sourceType, stringValue(record.sourceId) || undefined, date, title),
     date,
+    localDate: date,
     timestamp,
+    timestampUtc: timestamp,
     sourceType,
     sourceId: stringValue(record.sourceId) || undefined,
     title: title || "Recovery IQ event",
@@ -1641,12 +1736,21 @@ function normalizeSmallWin(value: unknown): SmallWin | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Partial<SmallWin> & { xp?: number };
   if (record.id === "small-win-today") return null;
-  if (!record.id || !record.date || !record.title || !record.description || !record.source) {
+  if (
+    !record.id ||
+    (!record.date && !record.localDate) ||
+    !record.title ||
+    !record.description ||
+    !record.source
+  ) {
     return null;
   }
+  const localDate = record.localDate || record.date || getLocalDateKey();
   return {
     id: record.id,
-    date: record.date,
+    date: localDate,
+    localDate,
+    timestampUtc: record.timestampUtc,
     title: record.title,
     description: record.description,
     source: record.source,
@@ -1724,11 +1828,15 @@ function normalizeMorningCheckIn(
   entry: LegacyMorningCheckIn | undefined,
 ): MorningCheckIn | undefined {
   if (!entry) return undefined;
-  const date = entry.date ?? todayIso();
+  const timestampUtc = entry.timestampUtc ?? getUtcTimestamp();
+  const date =
+    entry.localDate || entry.date || localDateFromTimestampUtc(timestampUtc) || getLocalDateKey();
   const phaseId = entry.phaseId ?? "activation-early-rom";
   const fallback = createDefaultMorningCheckIn(date, phaseId);
   return {
     date,
+    localDate: date,
+    timestampUtc,
     phaseId,
     pain: finiteNumber(entry.pain, fallback.pain),
     swelling: finiteNumber(entry.swelling, fallback.swelling),
@@ -1759,11 +1867,15 @@ function normalizeEveningCheckIn(
   entry: Partial<EveningCheckIn> | undefined,
 ): EveningCheckIn | undefined {
   if (!entry) return undefined;
-  const date = entry.date ?? todayIso();
+  const timestampUtc = entry.timestampUtc ?? getUtcTimestamp();
+  const date =
+    entry.localDate || entry.date || localDateFromTimestampUtc(timestampUtc) || getLocalDateKey();
   const phaseId = entry.phaseId ?? "activation-early-rom";
   const fallback = createDefaultEveningCheckIn(date, phaseId);
   return {
     date,
+    localDate: date,
+    timestampUtc,
     phaseId,
     exercisesCompleted: entry.exercisesCompleted ?? "",
     painDuring: finiteNumber(entry.painDuringActivity ?? entry.painDuring, fallback.painDuring),
@@ -1841,7 +1953,7 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
   );
 
   const savedMorning = normalizeMorningCheckIn(saved.morning as LegacyMorningCheckIn | undefined);
-  const savedEvening = normalizeEveningCheckIn(saved.evening);
+  const savedEvening = normalizeEveningCheckIn(saved.evening ?? undefined);
   const normalizedSavedCheckIns =
     saved.checkIns?.map((entry) => ({
       ...entry,
@@ -1858,7 +1970,7 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
           ...(savedMorning || savedEvening
             ? [
                 createCheckIn(
-                  savedMorning?.date ?? savedEvening?.date ?? todayIso(),
+                  savedMorning?.date ?? savedEvening?.date ?? getLocalDateKey(),
                   savedMorning,
                   savedEvening,
                 ),
@@ -1867,55 +1979,87 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
         ]
       : initial.checkIns;
 
-  const dailyCoachPlans = (saved.dailyCoachPlans ?? initial.dailyCoachPlans).map((plan) => {
-    const raw = plan as DailyCoachPlan & {
-      source?: string;
-      readiness?: DailyCoachPlan["readiness"] | { status?: string; reason?: string };
-      focus?: string;
-      priority?: string;
-      importedAt?: string;
-      planType?: string;
-      stopRules?: string[];
-      eveningCheckInFocus?: string[];
-      notes?: string;
-      status?: DailyCoachPlanStatus;
-    };
-    const readiness =
-      typeof raw.readiness === "object" && raw.readiness ? raw.readiness.status : raw.readiness;
-    const source =
-      raw.source?.toLowerCase() === "chatgpt"
-        ? "ChatGPT"
-        : raw.source === "physio" ||
-            raw.source === "surgeon" ||
-            raw.source === "trainer" ||
-            raw.source === "self" ||
-            raw.source === "other"
-          ? raw.source
-          : "self";
-    const isSeedPlan =
-      raw.importedFromNoteId === "coach-note-1" ||
-      raw.notes?.includes("Imported plan seed shows the intended Daily Coach Plan shape");
+  const dailyCoachPlans: DailyCoachPlan[] = (saved.dailyCoachPlans ?? initial.dailyCoachPlans).map(
+    (plan) => {
+      const raw = plan as Omit<Partial<DailyCoachPlan>, "source" | "readiness"> & {
+        source?: string;
+        readiness?: DailyCoachPlan["readiness"] | { status?: string; reason?: string };
+        focus?: string;
+        priority?: string;
+        importedAt?: string;
+        planType?: string;
+        stopRules?: string[];
+        eveningCheckInFocus?: string[];
+        notes?: string;
+        status?: DailyCoachPlanStatus;
+      };
+      const readiness =
+        typeof raw.readiness === "object" && raw.readiness ? raw.readiness.status : raw.readiness;
+      const source: DailyCoachPlanSource =
+        raw.source?.toLowerCase() === "chatgpt"
+          ? "ChatGPT"
+          : raw.source === "physio" ||
+              raw.source === "surgeon" ||
+              raw.source === "trainer" ||
+              raw.source === "self" ||
+              raw.source === "other"
+            ? (raw.source as DailyCoachPlanSource)
+            : "self";
+      const isSeedPlan =
+        raw.importedFromNoteId === "coach-note-1" ||
+        raw.notes?.includes("Imported plan seed shows the intended Daily Coach Plan shape");
+      const importedAt = raw.importedAt ?? raw.createdAt ?? getUtcTimestamp();
+      const localDate =
+        raw.localDate || raw.date || localDateFromTimestampUtc(importedAt) || getLocalDateKey();
+      const phaseId = PHASE_CONFIGS.some((phase) => phase.id === raw.phaseId)
+        ? (raw.phaseId as PhaseId)
+        : "activation-early-rom";
+      const confidence =
+        raw.confidence === "High" || raw.confidence === "Low" || raw.confidence === "Medium"
+          ? raw.confidence
+          : "Medium";
 
-    return {
-      ...raw,
-      source,
-      importedAt: raw.importedAt ?? raw.createdAt ?? new Date().toISOString(),
-      planType: "daily_coach_plan",
-      readiness:
-        readiness === "ready" || readiness === "recover" || readiness === "modify"
-          ? readiness
-          : "modify",
-      readinessReason:
-        raw.readinessReason ??
-        (typeof raw.readiness === "object" && raw.readiness ? raw.readiness.reason : undefined),
-      primaryFocus: raw.primaryFocus ?? raw.focus ?? raw.priority ?? "Daily coach plan",
-      focus: raw.focus ?? raw.primaryFocus ?? raw.priority ?? "Daily coach plan",
-      stopRules: raw.stopRules ?? [],
-      eveningCheckInFocus: raw.eveningCheckInFocus ?? [],
-      notes: raw.notes ?? "",
-      status: isSeedPlan ? "archived" : (raw.status ?? "active"),
-    };
-  });
+      return {
+        ...raw,
+        id: raw.id ?? `plan-${localDate}-${slugify(importedAt)}`,
+        date: localDate,
+        localDate,
+        timestampUtc: raw.timestampUtc ?? importedAt,
+        source,
+        createdAt: raw.createdAt ?? importedAt,
+        importedAt,
+        planType: "daily_coach_plan",
+        phaseId,
+        missionIds: raw.missionIds ?? [],
+        trackIds: raw.trackIds ?? [],
+        readiness:
+          readiness === "ready" || readiness === "recover" || readiness === "modify"
+            ? readiness
+            : "modify",
+        readinessReason:
+          raw.readinessReason ??
+          (typeof raw.readiness === "object" && raw.readiness ? raw.readiness.reason : undefined),
+        primaryFocus: raw.primaryFocus ?? raw.focus ?? raw.priority ?? "Daily coach plan",
+        focus: raw.focus ?? raw.primaryFocus ?? raw.priority ?? "Daily coach plan",
+        priority: raw.priority ?? raw.primaryFocus ?? raw.focus ?? "Daily coach plan",
+        workload: raw.workload ?? "",
+        rationale: raw.rationale ?? "",
+        nextReassessment: raw.nextReassessment ?? "",
+        confidence,
+        targets: raw.targets ?? [],
+        stopRules: raw.stopRules ?? [],
+        eveningCheckInFocus: raw.eveningCheckInFocus ?? [],
+        quests: (raw.quests ?? []).map((quest) => ({
+          ...quest,
+          date: localDate,
+          localDate,
+          timestampUtc: quest.timestampUtc ?? raw.timestampUtc ?? importedAt,
+        })),
+        notes: raw.notes ?? "",
+        status: isSeedPlan ? "archived" : (raw.status ?? "active"),
+      };
+    },
+  );
   const recoveryIqEvents = (saved.recoveryIqEvents ?? [])
     .map(normalizeRecoveryIqEvent)
     .filter((event): event is RecoveryIqEvent => Boolean(event));
@@ -1941,10 +2085,10 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
     milestones,
     dailyCoachPlans,
     coachNotes: (saved.coachNotes ?? initial.coachNotes).map(normalizeCoachNote),
-    athleteNotes: saved.athleteNotes ?? initial.athleteNotes,
+    athleteNotes: (saved.athleteNotes ?? initial.athleteNotes).map(normalizeAthleteNote),
     recoveryIqEvents,
     smallWins,
-    coachPackets: saved.coachPackets ?? initial.coachPackets,
+    coachPackets: (saved.coachPackets ?? initial.coachPackets).map(normalizeCoachPacket),
   };
 }
 
@@ -2037,7 +2181,7 @@ export function createRecoveryIqEvent({
   title,
   description,
   xpAmount,
-  timestamp = new Date().toISOString(),
+  timestamp = getUtcTimestamp(),
 }: {
   date: string;
   sourceType: RecoveryIqEventSourceType;
@@ -2047,16 +2191,19 @@ export function createRecoveryIqEvent({
   xpAmount: number;
   timestamp?: string;
 }): RecoveryIqEvent {
+  const timestampUtc = timestamp;
   return {
     id: recoveryIqEventId(sourceType, sourceId, date, title),
     date,
-    timestamp,
+    localDate: date,
+    timestamp: timestampUtc,
+    timestampUtc,
     sourceType,
     sourceId,
     title,
     description,
     xpAmount,
-    createdAt: timestamp,
+    createdAt: timestampUtc,
   };
 }
 
@@ -2111,8 +2258,8 @@ export function phaseConfigById(phaseId: PhaseId, phases = PHASE_CONFIGS): Phase
   return phases.find((phase) => phase.id === phaseId) ?? PHASE_CONFIGS[0];
 }
 
-export function phaseForDate(s: PhoenixState, isoDate = todayIso()): Phase {
-  const saved = s.checkIns?.find((entry) => entry.date === isoDate);
+export function phaseForDate(s: PhoenixState, isoDate = getLocalDateKey()): Phase {
+  const saved = s.checkIns?.find((entry) => dailyRecordDate(entry) === isoDate);
   const morning = saved?.morning ?? getMorningForDate(s, isoDate);
   const evening = saved?.evening ?? getEveningForDate(s, isoDate);
   return phaseConfigById(
@@ -2161,18 +2308,20 @@ export function daysPostOp(s: PhoenixState, isoDate: string): number {
 }
 
 export function getMorningForDate(s: PhoenixState, isoDate: string): MorningCheckIn | null {
-  return allMorningCheckIns(s).find((m) => m.date === isoDate) ?? null;
+  return allMorningCheckIns(s).find((m) => dailyRecordDate(m) === isoDate) ?? null;
 }
 
 export function getEveningForDate(s: PhoenixState, isoDate: string): EveningCheckIn | null {
-  return allEveningCheckIns(s).find((e) => e.date === isoDate) ?? null;
+  return allEveningCheckIns(s).find((e) => dailyRecordDate(e) === isoDate) ?? null;
 }
 
 export function getCheckInForDate(s: PhoenixState, isoDate: string): CheckIn {
-  const saved = s.checkIns?.find((entry) => entry.date === isoDate);
+  const saved = s.checkIns?.find((entry) => dailyRecordDate(entry) === isoDate);
   return {
     id: saved?.id ?? `check-in-${isoDate}`,
     date: isoDate,
+    localDate: isoDate,
+    timestampUtc: saved?.timestampUtc,
     phaseId: saved?.phaseId ?? currentPhase(s).id,
     morning: saved?.morning ?? getMorningForDate(s, isoDate) ?? undefined,
     evening: saved?.evening ?? getEveningForDate(s, isoDate) ?? undefined,
@@ -2181,15 +2330,15 @@ export function getCheckInForDate(s: PhoenixState, isoDate: string): CheckIn {
 
 export function previousMorning(s: PhoenixState, isoDate: string): MorningCheckIn | null {
   const all = allMorningCheckIns(s)
-    .filter((m) => m.date < isoDate)
-    .sort((a, b) => (a.date < b.date ? 1 : -1));
+    .filter((m) => dailyRecordDate(m) < isoDate)
+    .sort((a, b) => (dailyRecordDate(a) < dailyRecordDate(b) ? 1 : -1));
   return all[0] ?? null;
 }
 
 export function previousEvening(s: PhoenixState, isoDate: string): EveningCheckIn | null {
   const all = allEveningCheckIns(s)
-    .filter((e) => e.date < isoDate)
-    .sort((a, b) => (a.date < b.date ? 1 : -1));
+    .filter((e) => dailyRecordDate(e) < isoDate)
+    .sort((a, b) => (dailyRecordDate(a) < dailyRecordDate(b) ? 1 : -1));
   return all[0] ?? null;
 }
 
@@ -2641,7 +2790,7 @@ function applyClinicianConstraints(
   return allowedQuests;
 }
 
-export function generateDailyQuestPlan(s: PhoenixState, isoDate = todayIso()): QuestDraft[] {
+export function generateDailyQuestPlan(s: PhoenixState, isoDate = getLocalDateKey()): QuestDraft[] {
   const phase = phaseForDate(s, isoDate);
   const morning = getMorningForDate(s, isoDate);
   const priorEvening = previousEvening(s, isoDate);
@@ -2682,7 +2831,7 @@ function storedCompletionForQuest(
     return completions[quest.id];
   }
 
-  if (isoDate !== todayIso()) return null;
+  if (isoDate !== getLocalDateKey()) return null;
 
   const ids = [quest.id, ...(LEGACY_QUEST_ID_ALIASES[quest.id] ?? [])];
   const saved = s.todayQuests.find((q) => ids.includes(q.id) || q.label === quest.label);
@@ -2711,6 +2860,7 @@ function normalizeQuestForDate(
   return {
     ...quest,
     date: isoDate,
+    localDate: isoDate,
     label: quest.label,
     title: quest.title ?? quest.label,
     done,
@@ -2934,7 +3084,10 @@ export function groupCoachPlanQuestsIntoDashboardObjectives(plan: DailyCoachPlan
     .slice(0, 5);
 }
 
-export function dailyCoachPlanForDate(s: PhoenixState, isoDate = todayIso()): DailyCoachPlan {
+export function dailyCoachPlanForDate(
+  s: PhoenixState,
+  isoDate = getLocalDateKey(),
+): DailyCoachPlan {
   const importedPlan = activeDailyCoachPlanForDate(s, isoDate);
   if (importedPlan) {
     return {
@@ -2948,13 +3101,16 @@ export function dailyCoachPlanForDate(s: PhoenixState, isoDate = todayIso()): Da
   const readiness = readinessForDate(s, isoDate);
   const rec = s.todayRecommendation;
   const tracks = activeRecoveryTracksForPhase(s, phase);
+  const timestampUtc = getUtcTimestamp();
 
   return {
     id: `generated-plan-${isoDate}`,
     date: isoDate,
+    localDate: isoDate,
+    timestampUtc,
     source: "self",
-    createdAt: new Date().toISOString(),
-    importedAt: new Date().toISOString(),
+    createdAt: timestampUtc,
+    importedAt: timestampUtc,
     planType: "daily_coach_plan",
     phaseId: phase.id,
     missionIds: missions.map((mission) => mission.id),
@@ -2988,20 +3144,22 @@ export function dailyCoachPlanForDate(s: PhoenixState, isoDate = todayIso()): Da
 
 export function activeDailyCoachPlanForDate(
   s: PhoenixState,
-  isoDate = todayIso(),
+  isoDate = getLocalDateKey(),
 ): DailyCoachPlan | null {
   const plan =
     s.dailyCoachPlans
-      ?.filter((item) => item.date === isoDate && item.status === "active")
+      ?.filter((item) => dailyRecordDate(item) === isoDate && item.status === "active")
       .sort((a, b) => (a.importedAt < b.importedAt ? 1 : -1))[0] ?? null;
   if (!plan) return null;
   return {
     ...plan,
+    date: isoDate,
+    localDate: isoDate,
     quests: plan.quests.map((quest) => normalizeQuestForDate(s, isoDate, quest)),
   };
 }
 
-export function dailyQuestsForDate(s: PhoenixState, isoDate = todayIso()): DailyQuest[] {
+export function dailyQuestsForDate(s: PhoenixState, isoDate = getLocalDateKey()): DailyQuest[] {
   const plan = dailyCoachPlanForDate(s, isoDate);
   const phaseId = plan.phaseId ?? phaseForDate(s, isoDate).id;
   const shouldGroup =
@@ -3107,6 +3265,7 @@ function normalizeImportedQuest(
     return {
       id: `quest-${index + 1}-${slugify(label)}`,
       date,
+      localDate: date,
       label,
       title: label,
       done: false,
@@ -3140,6 +3299,7 @@ function normalizeImportedQuest(
   return {
     id: stringValue(record.id) || `quest-${index + 1}-${slugify(label)}`,
     date,
+    localDate: date,
     label,
     title: stringValue(record.title) || label,
     done,
@@ -3168,7 +3328,7 @@ function normalizeImportedQuest(
 
 export function parseDailyCoachPlanJson(
   rawJson: string,
-  fallbackDate = todayIso(),
+  fallbackDate = getLocalDateKey(),
 ): DailyCoachPlanImportResult {
   const errors: string[] = [];
   let parsed: unknown;
@@ -3195,7 +3355,7 @@ export function parseDailyCoachPlanJson(
   if (!primaryFocus) errors.push("primaryFocus is required.");
   if (!Array.isArray(questsInput)) errors.push("quests array is required.");
   if (!Array.isArray(stopRulesInput)) errors.push("stopRules array is required.");
-  if (errors.length > 0) return { ok: false, errors };
+  if (errors.length > 0 || !source) return { ok: false, errors };
 
   const planDate = date || fallbackDate;
   const id = stringValue(input.id) || `plan-${planDate}-${Date.now()}`;
@@ -3208,8 +3368,8 @@ export function parseDailyCoachPlanJson(
   if (stopRules.length === 0) errors.push("stopRules array must contain at least one stop rule.");
   if (errors.length > 0) return { ok: false, errors };
 
-  const createdAt = stringValue(input.createdAt) || new Date().toISOString();
-  const importedAt = new Date().toISOString();
+  const importedAt = getUtcTimestamp();
+  const createdAt = stringValue(input.createdAt) || importedAt;
   const activePhase = PHASE_CONFIGS.some((phase) => phase.id === input.phaseId)
     ? (input.phaseId as PhaseId)
     : "activation-early-rom";
@@ -3219,6 +3379,8 @@ export function parseDailyCoachPlanJson(
     plan: {
       id,
       date: planDate,
+      localDate: planDate,
+      timestampUtc: importedAt,
       source,
       authorName: stringValue(input.authorName) || undefined,
       createdAt,
@@ -3259,26 +3421,35 @@ export function parseDailyCoachPlanJson(
 
 export function activateDailyCoachPlan(plan: DailyCoachPlan) {
   setState((prev) => {
-    const previousQuests = dailyQuestsForDate(prev, plan.date);
+    const importedAt = plan.importedAt || getUtcTimestamp();
+    const localDate = plan.localDate || plan.date;
+    const timestampUtc = plan.timestampUtc || importedAt;
+    const previousQuests = dailyQuestsForDate(prev, localDate);
     const previousCompleted = previousQuests.filter((quest) => quest.done);
     const nextQuestCompletions = {
       ...(prev.questCompletions ?? {}),
-      [plan.date]: {
-        ...(prev.questCompletions?.[plan.date] ?? {}),
+      [localDate]: {
+        ...(prev.questCompletions?.[localDate] ?? {}),
       },
     };
 
-    const quests = plan.quests.map((quest) => {
+    const quests: DailyQuest[] = plan.quests.map((quest) => {
       const matchedCompleted = previousCompleted.find(
         (existing) => existing.id === quest.id || existing.label === quest.label,
       );
       const done = Boolean(matchedCompleted ?? quest.done);
-      nextQuestCompletions[plan.date][quest.id] = done;
+      nextQuestCompletions[localDate][quest.id] = done;
       return {
         ...quest,
-        date: plan.date,
+        date: localDate,
+        localDate,
+        timestampUtc,
         done,
-        status: done ? "complete" : quest.status === "skipped" ? "skipped" : "pending",
+        status: (done
+          ? "complete"
+          : quest.status === "skipped"
+            ? "skipped"
+            : "pending") as QuestStatus,
         source: "daily-coach-plan" as QuestSource,
         planId: plan.id,
       };
@@ -3286,8 +3457,11 @@ export function activateDailyCoachPlan(plan: DailyCoachPlan) {
 
     const activatedPlan: DailyCoachPlan = {
       ...plan,
+      date: localDate,
+      localDate,
+      timestampUtc,
       quests,
-      importedAt: plan.importedAt || new Date().toISOString(),
+      importedAt,
       status: "active",
     };
 
@@ -3295,18 +3469,18 @@ export function activateDailyCoachPlan(plan: DailyCoachPlan) {
       ...prev,
       dailyCoachPlans: [
         ...(prev.dailyCoachPlans ?? []).map((existing) =>
-          existing.date === plan.date && existing.status === "active"
+          dailyRecordDate(existing) === localDate && existing.status === "active"
             ? { ...existing, status: "replaced" as DailyCoachPlanStatus }
             : existing,
         ),
         activatedPlan,
       ],
       questCompletions: nextQuestCompletions,
-      todayQuests: plan.date === todayIso() ? quests : prev.todayQuests,
+      todayQuests: localDate === getLocalDateKey() ? quests : prev.todayQuests,
       recoveryIqEvents: upsertRecoveryIqEvent(
         prev.recoveryIqEvents,
         createRecoveryIqEvent({
-          date: plan.date,
+          date: localDate,
           sourceType: "coach_plan",
           sourceId: `coach-plan:${plan.id}`,
           title: "Daily Coach Plan imported",
@@ -3330,22 +3504,26 @@ export function archiveDailyCoachPlan(planId: string) {
 
 export type Trend = "up" | "down" | "flat" | "none";
 
-function upsertByDate<T extends { date: string }>(entries: T[], entry: T): T[] {
-  const withoutDate = entries.filter((existing) => existing.date !== entry.date);
-  return [...withoutDate, entry].sort((a, b) => (a.date < b.date ? -1 : 1));
+function upsertByDate<T extends { date: string; localDate?: string }>(entries: T[], entry: T): T[] {
+  const entryDate = dailyRecordDate(entry);
+  const withoutDate = entries.filter((existing) => dailyRecordDate(existing) !== entryDate);
+  return [...withoutDate, entry].sort((a, b) => (dailyRecordDate(a) < dailyRecordDate(b) ? -1 : 1));
 }
 
-function dedupeByDate<T extends { date: string }>(entries: T[]): T[] {
+function dedupeByDate<T extends { date: string; localDate?: string }>(entries: T[]): T[] {
   const byDate = new Map<string, T>();
-  entries.forEach((entry) => byDate.set(entry.date, entry));
-  return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+  entries.forEach((entry) => byDate.set(dailyRecordDate(entry), entry));
+  return [...byDate.values()].sort((a, b) => (dailyRecordDate(a) < dailyRecordDate(b) ? -1 : 1));
 }
 
 function upsertCheckIn(entries: CheckIn[], patch: CheckIn): CheckIn[] {
-  const existing = entries.find((entry) => entry.date === patch.date);
+  const patchDate = dailyRecordDate(patch);
+  const existing = entries.find((entry) => dailyRecordDate(entry) === patchDate);
   const next: CheckIn = {
     id: existing?.id ?? patch.id,
-    date: patch.date,
+    date: patchDate,
+    localDate: patchDate,
+    timestampUtc: patch.timestampUtc ?? existing?.timestampUtc,
     phaseId: patch.phaseId ?? existing?.phaseId ?? "activation-early-rom",
     morning: patch.morning ?? existing?.morning,
     evening: patch.evening ?? existing?.evening,
@@ -3372,13 +3550,17 @@ export function allEveningCheckIns(s: PhoenixState): EveningCheckIn[] {
 export function saveMorningCheckIn(entry: MorningCheckIn) {
   setState((prev) => {
     const phaseId = entry.phaseId ?? currentPhase(prev).id;
-    const savedEntry = { ...entry, phaseId };
+    const localDate = entry.localDate || entry.date;
+    const timestampUtc = entry.timestampUtc || getUtcTimestamp();
+    const savedEntry = { ...entry, date: localDate, localDate, timestampUtc, phaseId };
     return {
       ...prev,
-      morning: entry.date === todayIso() ? savedEntry : prev.morning,
+      morning: localDate === getLocalDateKey() ? savedEntry : prev.morning,
       checkIns: upsertCheckIn(prev.checkIns ?? [], {
-        id: `check-in-${entry.date}`,
-        date: entry.date,
+        id: `check-in-${localDate}`,
+        date: localDate,
+        localDate,
+        timestampUtc,
         phaseId,
         morning: savedEntry,
       }),
@@ -3389,12 +3571,13 @@ export function saveMorningCheckIn(entry: MorningCheckIn) {
       recoveryIqEvents: upsertRecoveryIqEvent(
         prev.recoveryIqEvents,
         createRecoveryIqEvent({
-          date: entry.date,
+          date: localDate,
           sourceType: "check_in",
-          sourceId: `morning-check-in:${entry.date}`,
+          sourceId: `morning-check-in:${localDate}`,
           title: "Morning check-in completed",
           description: "Daily evidence was logged before choosing today's workload.",
           xpAmount: 10,
+          timestamp: timestampUtc,
         }),
       ),
     };
@@ -3404,13 +3587,17 @@ export function saveMorningCheckIn(entry: MorningCheckIn) {
 export function saveEveningCheckIn(entry: EveningCheckIn) {
   setState((prev) => {
     const phaseId = entry.phaseId ?? currentPhase(prev).id;
-    const savedEntry = { ...entry, phaseId };
+    const localDate = entry.localDate || entry.date;
+    const timestampUtc = entry.timestampUtc || getUtcTimestamp();
+    const savedEntry = { ...entry, date: localDate, localDate, timestampUtc, phaseId };
     return {
       ...prev,
-      evening: entry.date === todayIso() ? savedEntry : prev.evening,
+      evening: localDate === getLocalDateKey() ? savedEntry : prev.evening,
       checkIns: upsertCheckIn(prev.checkIns ?? [], {
-        id: `check-in-${entry.date}`,
-        date: entry.date,
+        id: `check-in-${localDate}`,
+        date: localDate,
+        localDate,
+        timestampUtc,
         phaseId,
         evening: savedEntry,
       }),
@@ -3421,12 +3608,13 @@ export function saveEveningCheckIn(entry: EveningCheckIn) {
       recoveryIqEvents: upsertRecoveryIqEvent(
         prev.recoveryIqEvents,
         createRecoveryIqEvent({
-          date: entry.date,
+          date: localDate,
           sourceType: "check_in",
-          sourceId: `evening-check-in:${entry.date}`,
+          sourceId: `evening-check-in:${localDate}`,
           title: "Evening check-in completed",
           description: "Response data was logged for tomorrow's recovery decision.",
           xpAmount: 10,
+          timestamp: timestampUtc,
         }),
       ),
     };
@@ -3637,7 +3825,7 @@ export function readinessFor(m: MorningCheckIn | null, context: ReadinessContext
   };
 }
 
-export function readinessForDate(s: PhoenixState, isoDate = todayIso()): Readiness {
+export function readinessForDate(s: PhoenixState, isoDate = getLocalDateKey()): Readiness {
   const phase = phaseForDate(s, isoDate);
   return readinessFor(getMorningForDate(s, isoDate), {
     phaseId: phase.id,
@@ -3789,7 +3977,7 @@ function todaysWinFromRules(
 
 export function todaysWinForDate(
   s: PhoenixState,
-  isoDate = todayIso(),
+  isoDate = getLocalDateKey(),
 ): { label: string; detail: string } {
   return todaysWinFromRules(
     phaseForDate(s, isoDate),
@@ -3800,34 +3988,35 @@ export function todaysWinForDate(
   );
 }
 
-export function smallWinForDate(s: PhoenixState, isoDate = todayIso()): SmallWin {
-  const saved = s.smallWins.find((win) => win.date === isoDate);
+export function smallWinForDate(s: PhoenixState, isoDate = getLocalDateKey()): SmallWin {
+  const saved = s.smallWins.find((win) => dailyRecordDate(win) === isoDate);
   if (saved) return saved;
 
   const win = todaysWinForDate(s, isoDate);
   return {
     id: `small-win-${isoDate}`,
     date: isoDate,
+    localDate: isoDate,
     title: win.label,
     description: win.detail,
     source: "rule",
   };
 }
 
-export function coachNotesForDate(s: PhoenixState, isoDate = todayIso()): CoachNote[] {
-  return s.coachNotes.filter((note) => note.date === isoDate);
+export function coachNotesForDate(s: PhoenixState, isoDate = getLocalDateKey()): CoachNote[] {
+  return s.coachNotes.filter((note) => dailyRecordDate(note) === isoDate);
 }
 
 export function latestCoachNoteForDateAndPhase(
   s: PhoenixState,
-  isoDate = todayIso(),
+  isoDate = getLocalDateKey(),
 ): CoachNote | null {
   const phaseId = currentPhase(s).id;
   return (
     s.coachNotes
       .filter(
         (note) =>
-          note.date === isoDate &&
+          dailyRecordDate(note) === isoDate &&
           note.id !== "coach-note-1" &&
           (note.relatedPhaseId == null || note.relatedPhaseId === phaseId) &&
           !note.tags?.includes("seed") &&
@@ -3837,10 +4026,13 @@ export function latestCoachNoteForDateAndPhase(
   );
 }
 
-export function athleteNotesForDate(s: PhoenixState, isoDate = todayIso()): AthleteNote[] {
-  return s.athleteNotes.filter((note) => note.date === isoDate);
+export function athleteNotesForDate(s: PhoenixState, isoDate = getLocalDateKey()): AthleteNote[] {
+  return s.athleteNotes.filter((note) => dailyRecordDate(note) === isoDate);
 }
 
-export function recoveryIqEventsForDate(s: PhoenixState, isoDate = todayIso()): RecoveryIqEvent[] {
-  return s.recoveryIqEvents.filter((event) => event.date === isoDate);
+export function recoveryIqEventsForDate(
+  s: PhoenixState,
+  isoDate = getLocalDateKey(),
+): RecoveryIqEvent[] {
+  return s.recoveryIqEvents.filter((event) => dailyRecordDate(event) === isoDate);
 }

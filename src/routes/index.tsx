@@ -11,6 +11,7 @@ import {
   currentPhaseN,
   dailyQuestsForDate,
   getEveningForDate,
+  getLocalDateKey,
   type DailyQuest,
   type DailyCoachPlan,
   type CoachNote,
@@ -79,8 +80,8 @@ function Dashboard() {
   const milestoneProg = missionMilestoneProgress(s, mission.id);
   const phaseN = currentPhaseN(s);
 
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const [selectedDate, setSelectedDate] = useState<string>(todayIso);
+  const todayLocalDate = getLocalDateKey();
+  const [selectedDate, setSelectedDate] = useState<string>(todayLocalDate);
   const [packetOpen, setPacketOpen] = useState<null | PacketKind>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [viewPlanOpen, setViewPlanOpen] = useState(false);
@@ -90,12 +91,12 @@ function Dashboard() {
   const prev = previousMorning(s, selectedDate);
   const phase = phaseForDate(s, selectedDate);
   const readiness = readinessForDate(s, selectedDate);
-  const isToday = selectedDate === todayIso;
+  const isToday = selectedDate === todayLocalDate;
 
   const shiftDate = (delta: number) => {
     const d = new Date(selectedDate + "T00:00:00");
     d.setDate(d.getDate() + delta);
-    setSelectedDate(d.toISOString().slice(0, 10));
+    setSelectedDate(getLocalDateKey(d));
   };
 
   const dayOfWeek = new Date(selectedDate + "T00:00:00").toLocaleDateString(undefined, {
@@ -142,7 +143,7 @@ function Dashboard() {
         ...prev,
         questCompletions,
         todayQuests:
-          selectedDate === todayIso
+          selectedDate === todayLocalDate
             ? dateQuests.map((quest) => (quest.id === id ? { ...quest, done } : quest))
             : prev.todayQuests,
         recoveryIqEvents: done
@@ -299,7 +300,7 @@ function Dashboard() {
             <Calendar
               mode="single"
               selected={new Date(selectedDate + "T00:00:00")}
-              onSelect={(d) => d && setSelectedDate(d.toISOString().slice(0, 10))}
+              onSelect={(d) => d && setSelectedDate(getLocalDateKey(d))}
               disabled={(d) => d > new Date()}
               initialFocus
               className="pointer-events-auto p-3"

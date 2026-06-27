@@ -25,7 +25,9 @@ function RecoveryIQPage() {
   const xp = recoveryIqXpForState(s);
   const iq = recoveryIqForState(s);
   const events = [...s.recoveryIqEvents].sort((a, b) =>
-    (a.timestamp || a.createdAt) < (b.timestamp || b.createdAt) ? 1 : -1,
+    (a.timestampUtc || a.timestamp || a.createdAt) < (b.timestampUtc || b.timestamp || b.createdAt)
+      ? 1
+      : -1,
   );
   const checkInCount = events.filter((event) => event.sourceType === "check_in").length;
   const questCount = events.filter((event) => event.sourceType === "quest").length;
@@ -104,7 +106,7 @@ function RecoveryIqEventRow({ event }: { event: RecoveryIqEvent }) {
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium">{event.title}</div>
         <div className="mt-1 text-xs text-muted-foreground">
-          {formatSource(event.sourceType)} · {event.date}
+          {formatSource(event.sourceType)} · {event.localDate ?? event.date}
         </div>
         {event.description && (
           <div className="mt-1 text-sm text-muted-foreground">{event.description}</div>

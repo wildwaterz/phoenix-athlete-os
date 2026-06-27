@@ -5,6 +5,8 @@ import {
   allMorningCheckIns,
   currentPhase,
   dailyQuestsForDate,
+  getLocalDateKey,
+  getUtcTimestamp,
   readinessForDate,
   setState,
   type AthleteNote,
@@ -72,7 +74,7 @@ const appliesToOptions: CoachNoteAppliesTo[] = [
 
 const priorityOptions: CoachNotePriority[] = ["normal", "important", "override"];
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => getLocalDateKey();
 
 const emptyCoachForm = () => ({
   date: today(),
@@ -113,13 +115,15 @@ function JournalPage() {
 
   const submitAthleteNote = () => {
     if (!athleteForm.body.trim()) return;
-    const now = new Date().toISOString();
+    const now = getUtcTimestamp();
     setState((prev) => ({
       ...prev,
       athleteNotes: [
         {
           id: `athlete-note-${Date.now()}`,
           date: athleteForm.date,
+          localDate: athleteForm.date,
+          timestampUtc: now,
           body: athleteForm.body.trim(),
           tags: parseTags(athleteForm.tags),
           relatedPhaseId: currentPhase(prev).id,
@@ -134,13 +138,15 @@ function JournalPage() {
 
   const submitCoachNote = () => {
     if (!coachForm.summary.trim() && !coachForm.fullNote.trim()) return;
-    const now = new Date().toISOString();
+    const now = getUtcTimestamp();
     setState((prev) => ({
       ...prev,
       coachNotes: [
         {
           id: `coach-note-${Date.now()}`,
           date: coachForm.date,
+          localDate: coachForm.date,
+          timestampUtc: now,
           source: coachForm.source,
           noteType: coachForm.noteType,
           authorName: coachForm.authorName.trim() || undefined,
@@ -677,17 +683,25 @@ function formatDateTime(value: string) {
 }
 
 function systemDateTime(date: string, time: string) {
-  return `${date}T${time}.000Z`;
+  return `${date}T${time}`;
+}
+
+function localDateFromStoredValue(value: string | undefined) {
+  if (!value) return today();
+  if (!value.includes("T")) return value;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? today() : getLocalDateKey(date);
 }
 
 function buildSystemHistory(s: PhoenixState): SystemHistoryItem[] {
   const items: SystemHistoryItem[] = [];
 
   allMorningCheckIns(s).forEach((entry) => {
+    const date = entry.localDate ?? entry.date;
     items.push({
-      id: `morning-${entry.date}`,
-      date: entry.date,
-      createdAt: systemDateTime(entry.date, "07:00:00"),
+      id: `morning-${date}`,
+      date,
+      createdAt: entry.timestampUtc ?? systemDateTime(date, "07:00:00"),
       type: "Check-in",
       title: "Morning check-in logged",
       detail: `Pain ${entry.pain}/10, swelling ${entry.swellingLevel ?? entry.swelling}/10, walking confidence ${entry.walkingConfidence}/5.`,
@@ -695,10 +709,11 @@ function buildSystemHistory(s: PhoenixState): SystemHistoryItem[] {
   });
 
   allEveningCheckIns(s).forEach((entry) => {
+    const date = entry.localDate ?? entry.date;
     items.push({
-      id: `evening-${entry.date}`,
-      date: entry.date,
-      createdAt: systemDateTime(entry.date, "20:00:00"),
+      id: `evening-${date}`,
+      date,
+      createdAt: entry.timestampUtc ?? systemDateTime(date, "20:00:00"),
       type: "Check-in",
       title: "Evening check-in logged",
       detail: `Pain after ${entry.painAfter}/10, swelling change ${entry.swellingChange}, walking confidence after ${entry.walkingConfidenceAfter ?? entry.walkingConfidence}/5.`,
@@ -707,16 +722,17 @@ function buildSystemHistory(s: PhoenixState): SystemHistoryItem[] {
 
   const readinessByDate = new Map<string, Readiness["state"]>();
   allMorningCheckIns(s)
-    .sort((a, b) => (a.date > b.date ? 1 : -1))
+    .sort((a, b) => ((a.localDate ?? a.date) > (b.localDate ?? b.date) ? 1 : -1))
     .forEach((entry) => {
-      const readiness = readinessForDate(s, entry.date);
+      const date = entry.localDate ?? entry.date;
+      const readiness = readinessForDate(s, date);
       const previous = Array.from(readinessByDate.values()).at(-1);
-      readinessByDate.set(entry.date, readiness.state);
+      readinessByDate.set(date, readiness.state);
       if (previous && previous === readiness.state) return;
       items.push({
-        id: `readiness-${entry.date}-${readiness.state}`,
-        date: entry.date,
-        createdAt: systemDateTime(entry.date, "07:05:00"),
+        id: `readiness-${date}-${readiness.state}`,
+        date,
+        createdAt: entry.timestampUtc ?? systemDateTime(date, "07:05:00"),
         type: "Readiness",
         title: `Readiness set to ${readiness.label}`,
         detail: readiness.summary,
@@ -742,8 +758,8 @@ function buildSystemHistory(s: PhoenixState): SystemHistoryItem[] {
   s.recoveryIqEvents.forEach((event) => {
     items.push({
       id: `xp-${event.id}`,
-      date: event.date,
-      createdAt: event.timestamp || event.createdAt,
+      date: event.localDate ?? event.date,
+      createdAt: event.timestampUtc || event.timestamp || event.createdAt,
       type: "Recovery IQ",
       title: event.title,
       detail: event.description ?? formatLabel(event.sourceType),
@@ -754,7 +770,7 @@ function buildSystemHistory(s: PhoenixState): SystemHistoryItem[] {
   s.milestones
     .filter((milestone) => milestone.status === "unlocked")
     .forEach((milestone) => {
-      const date = milestone.unlockedAt?.slice(0, 10) ?? today();
+      const date = localDateFromStoredValue(milestone.unlockedAt);
       items.push({
         id: `milestone-${milestone.id}`,
         date,

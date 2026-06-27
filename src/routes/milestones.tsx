@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, PageHeader, Surface } from "@/components/app-shell";
 import {
   createRecoveryIqEvent,
+  getLocalDateKey,
+  getUtcTimestamp,
   MISSIONS,
   setState,
   upsertRecoveryIqEvent,
@@ -27,8 +29,9 @@ function MilestonesPage() {
       const milestone = prev.milestones.find((mi) => mi.id === id);
       if (!milestone || milestone.status === "unlocked") return prev;
 
-      const timestamp = new Date().toISOString();
-      const date = timestamp.slice(0, 10);
+      const now = new Date();
+      const timestamp = getUtcTimestamp(now);
+      const date = getLocalDateKey(now);
 
       return {
         ...prev,
