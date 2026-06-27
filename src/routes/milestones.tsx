@@ -27,7 +27,7 @@ function MilestonesPage() {
   const unlock = (id: string) =>
     setState((prev) => {
       const milestone = prev.milestones.find((mi) => mi.id === id);
-      if (!milestone || milestone.status === "unlocked") return prev;
+      if (!milestone || milestone.state === "unlocked") return prev;
 
       const now = new Date();
       const timestamp = getUtcTimestamp(now);
@@ -39,8 +39,18 @@ function MilestonesPage() {
           mi.id === id
             ? {
                 ...mi,
+                state: "unlocked",
                 status: "unlocked",
                 unlockedAt: date,
+                evidence: [
+                  ...mi.evidence,
+                  {
+                    date,
+                    type: "manual",
+                    summary: "Manually marked unlocked.",
+                    confidence: "medium",
+                  },
+                ],
               }
             : mi,
         ),
@@ -79,9 +89,9 @@ function MilestonesPage() {
               <div className="grid gap-3 md:grid-cols-2">
                 {items.map((mi) => {
                   const Icon =
-                    mi.status === "unlocked"
+                    mi.state === "unlocked"
                       ? CheckCircle2
-                      : mi.status === "locked"
+                      : mi.state === "locked" || mi.state === "paused"
                         ? Lock
                         : Trophy;
                   return (
@@ -90,9 +100,12 @@ function MilestonesPage() {
                         <div
                           className={cn(
                             "grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border",
-                            mi.status === "unlocked" && "bg-success/15 text-success",
-                            mi.status === "in-progress" && "bg-phoenix/15 text-phoenix",
-                            mi.status === "locked" && "text-muted-foreground",
+                            mi.state === "unlocked" && "bg-success/15 text-success",
+                            (mi.state === "testable" ||
+                              mi.state === "test_passed_pending_confirmation") &&
+                              "bg-phoenix/15 text-phoenix",
+                            (mi.state === "locked" || mi.state === "paused") &&
+                              "text-muted-foreground",
                           )}
                         >
                           <Icon className="h-5 w-5" />
@@ -113,7 +126,18 @@ function MilestonesPage() {
                           </p>
                           <p className="mt-1 text-xs">
                             <span className="text-muted-foreground">Evidence · </span>
-                            {mi.evidence}
+                            {mi.evidenceSummary}
+                          </p>
+                          {mi.evidence.length > 0 && (
+                            <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                              {mi.evidence.slice(-3).map((item) => (
+                                <li key={`${item.date}-${item.summary}`}>- {item.summary}</li>
+                              ))}
+                            </ul>
+                          )}
+                          <p className="mt-2 text-xs">
+                            <span className="text-muted-foreground">State · </span>
+                            {formatState(mi.state)}
                           </p>
                           {mi.coachNotes && (
                             <div className="mt-3 rounded-lg border border-border bg-background/40 p-2.5 text-xs text-muted-foreground">
@@ -121,7 +145,7 @@ function MilestonesPage() {
                               {mi.coachNotes}
                             </div>
                           )}
-                          {mi.status !== "unlocked" && (
+                          {mi.state !== "unlocked" && (
                             <button
                               onClick={() => unlock(mi.id)}
                               className="mt-3 rounded-lg border border-border px-2.5 py-1 text-[11px] uppercase tracking-wider text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -141,4 +165,11 @@ function MilestonesPage() {
       </div>
     </AppShell>
   );
+}
+
+function formatState(value: string) {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

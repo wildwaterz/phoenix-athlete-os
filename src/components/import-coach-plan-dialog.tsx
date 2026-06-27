@@ -12,7 +12,7 @@ const exampleJson = `{
   "source": "ChatGPT",
   "authorName": "ChatGPT",
   "planType": "daily_coach_plan",
-  "readiness": "modify",
+  "readiness": "modify_positive",
   "primaryFocus": "Activation + early ROM without provoking swelling.",
   "targets": [
     { "label": "Quad activation", "value": "Quality sets before fatigue" },
@@ -59,6 +59,53 @@ const exampleJson = `{
       "objectiveGroup": "evening_response",
       "kind": "main",
       "xp": 10
+    }
+  ],
+  "skillTests": [
+    {
+      "id": "slr-test-dose",
+      "date": "2026-06-26",
+      "relatedMilestoneId": "straight_leg_raise_no_lag",
+      "title": "Straight leg raise test dose",
+      "description": "Optional skill-control check only if criteria are met.",
+      "status": "available",
+      "progressionType": "skill_control",
+      "testDose": {
+        "sets": 1,
+        "reps": 3,
+        "instructions": "Lock knee first. Stop immediately if lag, guarding, pain, or irritation appears."
+      },
+      "passCriteria": ["No lag", "Controlled lift", "No pain spike", "No worse walking afterward"],
+      "stopRules": ["Stop if lag appears.", "Stop if pain rises above 3/10."],
+      "responseRequired": {
+        "eveningCheckInRequired": true,
+        "nextMorningCheckInRequired": true
+      }
+    }
+  ],
+  "milestoneUpdates": [
+    {
+      "milestoneId": "straight_leg_raise_no_lag",
+      "state": "test_passed_pending_confirmation",
+      "summary": "SLR test dose completed successfully; pending evening and next-morning response.",
+      "nextStepIfConfirmed": "Add SLR 1x5 clean reps tomorrow, no load.",
+      "nextStepIfNotConfirmed": "Keep SLR possible but not doseable; return to quad sets only."
+    }
+  ],
+  "nextUnlocks": [
+    {
+      "milestoneId": "straight_leg_raise_no_lag",
+      "title": "Straight Leg Raise - No Lag",
+      "state": "test_passed_pending_confirmation",
+      "evidenceNeeded": [
+        "evening pain <= 3",
+        "swelling stable or improved",
+        "extension neutral",
+        "walking not worse",
+        "next morning baseline stable"
+      ],
+      "nextStepIfConfirmed": "Tomorrow may add SLR 1x5 clean reps, no load.",
+      "nextStepIfNotConfirmed": "Keep SLR possible but not doseable."
     }
   ],
   "stopRules": [
@@ -149,6 +196,8 @@ export function ImportCoachPlanDialog({
                 <PreviewRow label="Source" value={plan.authorName ?? plan.source} />
                 <PreviewRow label="Readiness" value={plan.readiness} />
                 <PreviewRow label="Quests" value={String(plan.quests.length)} />
+                <PreviewRow label="Skill tests" value={String(plan.skillTests.length)} />
+                <PreviewRow label="Next unlocks" value={String(plan.nextUnlocks.length)} />
               </div>
               <div className="mt-3 text-sm">{plan.primaryFocus}</div>
             </div>

@@ -1,4 +1,4 @@
-import type { CoachPacket, PhoenixState, PrescribedTask } from "./phoenix-data";
+import type { CoachPacket, PhoenixState, PrescribedTask, SkillTest } from "./phoenix-data";
 import {
   activeMissions,
   activeRecoveryTracksForPhase,
@@ -14,12 +14,14 @@ import {
   getLocalDateKey,
   getMorningForDate,
   getUtcTimestamp,
+  milestoneWatchForDate,
   previousEvening,
   previousMorning,
   phaseForDate,
   readinessForDate,
   recoveryIqForState,
   recoveryIqXpForState,
+  skillTestsForDate,
   smallWinForDate,
 } from "./phoenix-data";
 
@@ -47,6 +49,8 @@ export function buildPacketJson(
   const latestCoachNote = coachNotes[0];
   const dailyQuests = dailyQuestsForDate(s, isoDate);
   const dailyCoachPlan = dailyCoachPlanForDate(s, isoDate);
+  const skillTests = skillTestsForDate(s, isoDate);
+  const nextUnlocks = milestoneWatchForDate(s, isoDate);
   return {
     id: `packet-${kind}-${isoDate}`,
     kind,
@@ -85,9 +89,15 @@ export function buildPacketJson(
     dailyCoachPlan,
     smallWin: smallWinForDate(s, isoDate),
     milestones: s.milestones.map((m) => ({
+      id: m.id,
       name: m.name,
+      state: m.state,
       status: m.status,
       unlockedAt: m.unlockedAt ?? null,
+      evidence: m.evidence,
+      unlockCriteria: m.unlockCriteria,
+      nextStepIfConfirmed: m.nextStepIfConfirmed,
+      nextStepIfNotConfirmed: m.nextStepIfNotConfirmed,
     })),
     dailyQuests: dailyQuests.map((q) => ({
       date: q.date,
@@ -101,6 +111,8 @@ export function buildPacketJson(
       prescribedTasks: q.prescribedTasks,
     })),
     prescribedTasks: dailyQuests.flatMap((q) => q.prescribedTasks ?? []),
+    skillTests,
+    nextUnlocks,
     completedToday: dailyQuests.filter((q) => q.done).map((q) => q.label),
     pendingToday: dailyQuests.filter((q) => !q.done).map((q) => q.label),
     coachNotesRecent: coachNotes.slice(0, 3),
@@ -135,9 +147,12 @@ export function buildPacketMarkdown(
   const smallWin = smallWinForDate(s, isoDate);
   const dailyQuests = dailyQuestsForDate(s, isoDate);
   const prescribedTasks = dailyQuests.flatMap((q) => q.prescribedTasks ?? []);
+  const skillTests = skillTestsForDate(s, isoDate);
+  const nextUnlocks = milestoneWatchForDate(s, isoDate);
   const previousTasks = previousResponse
     ? dailyQuestsForDate(s, previousResponse.date).flatMap((q) => q.prescribedTasks ?? [])
     : [];
+  const previousSkillTests = previousResponse ? skillTestsForDate(s, previousResponse.date) : [];
 
   const lines: string[] = [];
   lines.push(`# Phoenix OS — ${kind === "morning" ? "Morning" : "Evening"} Coach Packet`);
@@ -171,8 +186,10 @@ export function buildPacketMarkdown(
     lines.push(`- Swelling context: ${m.swellingContext ?? "unknown"}`);
     lines.push(`- Swelling trend: ${m.swellingTrend ?? "unknown"}`);
     lines.push(`- Walking confidence: ${m.walkingConfidence}/5`);
+    lines.push(`- Gait quality: ${m.gaitQuality ?? "—"}/5`);
     lines.push(`- Extension status: ${formatPacketValue(m.extensionStatus)}`);
     lines.push(`- Flexion comfort/status: ${formatPacketValue(m.flexionStatus)}`);
+    lines.push(`- Flexion limiting factor: ${formatPacketValue(m.flexionLimitingFactor)}`);
     lines.push(`- Sleep: ${m.sleepHours}h`);
     lines.push(`- Weight: ${m.weightKg}kg · Protein target: ${m.proteinTargetG}g`);
     lines.push(`- Confidence in knee: ${m.confidence}/5`);
@@ -187,8 +204,10 @@ export function buildPacketMarkdown(
       `- Pain: ${previous.pain}/10 · Swelling: ${previous.swellingLevel ?? previous.swelling}/10`,
     );
     lines.push(`- Walking confidence: ${previous.walkingConfidence}/5`);
+    lines.push(`- Gait quality: ${previous.gaitQuality ?? "—"}/5`);
     lines.push(`- Extension status: ${formatPacketValue(previous.extensionStatus)}`);
     lines.push(`- Flexion comfort/status: ${formatPacketValue(previous.flexionStatus)}`);
+    lines.push(`- Flexion limiting factor: ${formatPacketValue(previous.flexionLimitingFactor)}`);
     lines.push("");
   }
 
@@ -205,6 +224,7 @@ export function buildPacketMarkdown(
     lines.push(
       `- Walking confidence after: ${previousResponse.walkingConfidenceAfter ?? previousResponse.walkingConfidence}/5`,
     );
+    lines.push(`- Gait quality after: ${previousResponse.gaitQualityAfter ?? "—"}/5`);
     lines.push(`- Quad activation quality: ${previousResponse.quadActivationQuality}/5`);
     lines.push(`- Extension response: ${formatPacketValue(previousResponse.extensionResponse)}`);
     lines.push(`- Flexion response: ${formatPacketValue(previousResponse.flexionResponse)}`);
@@ -221,12 +241,21 @@ export function buildPacketMarkdown(
     lines.push("");
   }
 
+  if (previousSkillTests.length > 0) {
+    lines.push(`## Previous Skill Test Responses`);
+    previousSkillTests.forEach((test) => {
+      lines.push(`- ${test.title}: ${formatSkillTest(test)}`);
+    });
+    lines.push("");
+  }
+
   if (kind === "evening" && e) {
     lines.push(`## Evening Response Check-In`);
     lines.push(`- Quests completed: ${e.exercisesCompleted || "—"}`);
     lines.push(`- Pain during: ${e.painDuring}/10 · Pain after: ${e.painAfter}/10`);
     lines.push(`- Swelling change: ${e.swellingChange > 0 ? "+" : ""}${e.swellingChange}`);
     lines.push(`- Walking confidence after: ${e.walkingConfidenceAfter ?? e.walkingConfidence}/5`);
+    lines.push(`- Gait quality after: ${e.gaitQualityAfter ?? "—"}/5`);
     lines.push(`- Quad activation quality: ${e.quadActivationQuality}/5`);
     lines.push(`- Extension response: ${formatPacketValue(e.extensionResponse)}`);
     lines.push(`- Flexion response: ${formatPacketValue(e.flexionResponse)}`);
@@ -240,6 +269,29 @@ export function buildPacketMarkdown(
     lines.push(`## Today's Prescribed Task Responses`);
     prescribedTasks.forEach((task) => {
       lines.push(`- ${task.title}: ${formatTaskCompletion(task)}`);
+    });
+    lines.push("");
+  }
+
+  if (skillTests.length > 0) {
+    lines.push(`## Optional Skill Tests`);
+    skillTests.forEach((test) => {
+      lines.push(`- ${test.title}: ${formatSkillTest(test)}`);
+      lines.push(`  - Test dose: ${formatSkillTestDose(test)}`);
+      if (test.passCriteria.length) lines.push(`  - Pass: ${test.passCriteria.join("; ")}`);
+      if (test.stopRules.length) lines.push(`  - Stop: ${test.stopRules.join("; ")}`);
+    });
+    lines.push("");
+  }
+
+  if (nextUnlocks.length > 0) {
+    lines.push(`## Milestone Watch / Next Unlocks`);
+    nextUnlocks.forEach((item) => {
+      lines.push(`**${item.title}** — ${item.statusLabel}`);
+      if (item.evidence.length) lines.push(`- Evidence: ${item.evidence.join("; ")}`);
+      if (item.unlockCriteria.length) lines.push(`- To unlock: ${item.unlockCriteria.join("; ")}`);
+      lines.push(`- If confirmed: ${item.nextStepIfConfirmed}`);
+      lines.push(`- If not confirmed: ${item.nextStepIfNotConfirmed}`);
     });
     lines.push("");
   }
@@ -284,7 +336,7 @@ export function buildPacketMarkdown(
   lines.push(`## Milestones`);
   s.milestones.forEach((mi) =>
     lines.push(
-      `- [${mi.status === "unlocked" ? "x" : " "}] **${mi.name}** — ${mi.status}${mi.unlockedAt ? ` (${mi.unlockedAt})` : ""}`,
+      `- [${mi.state === "unlocked" ? "x" : " "}] **${mi.name}** — ${mi.state}${mi.unlockedAt ? ` (${mi.unlockedAt})` : ""}`,
     ),
   );
   lines.push("");
@@ -326,6 +378,7 @@ export function buildPacketMarkdown(
   lines.push(
     `- Do not let swelling level alone dominate progression; use adherence plus response.`,
   );
+  lines.push(`- Modify+ can support skill/control testing, but not load progression.`);
   lines.push("");
   lines.push(`## Current Concerns`);
   lines.push(m?.notes || "None reported.");
@@ -370,6 +423,37 @@ function formatTaskCompletion(task: PrescribedTask): string {
   ]
     .filter(Boolean)
     .join("; ");
+}
+
+function formatSkillTestDose(test: SkillTest): string {
+  const dose = [
+    test.testDose.sets == null ? "" : `${test.testDose.sets} sets`,
+    test.testDose.reps == null ? "" : `${test.testDose.reps} reps`,
+    test.testDose.duration ?? "",
+  ].filter(Boolean);
+  return [dose.join(", "), test.testDose.instructions].filter(Boolean).join("; ");
+}
+
+function formatSkillTest(test: SkillTest): string {
+  const result = test.result;
+  const response = [
+    result.completed ? "completed" : "not completed",
+    result.repsCompleted == null ? "" : `${result.repsCompleted} reps`,
+    result.painDuring == null ? "" : `pain during ${result.painDuring}/10`,
+    result.painAfter == null ? "" : `pain after ${result.painAfter}/10`,
+    result.qualityScore == null ? "" : `quality ${result.qualityScore}/5`,
+    result.lagObserved == null ? "" : result.lagObserved ? "lag observed" : "no lag reported",
+    result.feltControlled == null
+      ? ""
+      : result.feltControlled
+        ? "felt controlled"
+        : "did not feel controlled",
+    result.irritation == null ? "" : result.irritation ? "irritation reported" : "no irritation",
+    result.swellingResponse ? `swelling ${result.swellingResponse}` : "",
+    result.walkingResponse ? `walking ${result.walkingResponse}` : "",
+    result.notes ? `notes: ${result.notes}` : "",
+  ].filter(Boolean);
+  return [`status ${test.status}`, ...response].join("; ");
 }
 
 function formatPacketValue(value: string | undefined) {

@@ -21,6 +21,7 @@ import {
   getMorningForDate,
   latestCoachNoteForDateAndPhase,
   METRIC_DEFINITIONS,
+  milestoneWatchForDate,
   missionMilestoneProgress,
   phaseForDate,
   previousMorning,
@@ -29,13 +30,17 @@ import {
   recoveryIqXpForState,
   removeRecoveryIqEvent,
   setState,
+  skillTestsForDate,
   todaysWinForDate,
   trendFor,
   updatePrescribedTaskCompletion,
+  updateSkillTestResult,
   upsertRecoveryIqEvent,
+  type MilestoneWatchItem,
   type MetricId,
   type PrescribedTask,
   type PrescribedTaskCompletionStatus,
+  type SkillTest,
   usePhoenix,
 } from "@/lib/phoenix-data";
 import {
@@ -115,6 +120,8 @@ function Dashboard() {
   const activePlan = activeDailyCoachPlanForDate(s, selectedDate);
   const latestCoachNote = latestCoachNoteForDateAndPhase(s, selectedDate);
   const quests = dailyQuestsForDate(s, selectedDate);
+  const skillTests = skillTestsForDate(s, selectedDate);
+  const milestoneWatch = milestoneWatchForDate(s, selectedDate);
 
   const copyMorningPacket = async () => {
     if (!m) return;
@@ -178,20 +185,25 @@ function Dashboard() {
       };
     });
 
-  const mainQuests = quests.filter((q) => q.kind === "main");
-  const sideQuests = quests.filter((q) => q.kind === "side");
+  const optionalSkillQuests = quests.filter((q) => q.questType === "optional_skill_test");
+  const mainQuests = quests.filter(
+    (q) => q.kind === "main" && q.questType !== "optional_skill_test",
+  );
+  const sideQuests = quests.filter(
+    (q) => q.kind === "side" && q.questType !== "optional_skill_test",
+  );
   const readinessTone =
-    readiness.state === "ready" ? "good" : readiness.state === "modify" ? "watch" : "alert";
+    readiness.state === "ready" ? "good" : readiness.state === "recover" ? "alert" : "watch";
   const readinessRing =
     readiness.state === "ready"
       ? "border-success/60 bg-success/5"
-      : readiness.state === "modify"
+      : readiness.state === "modify" || readiness.state === "modify_positive"
         ? "border-warning/60 bg-warning/5"
         : "border-destructive/60 bg-destructive/5";
   const readinessText =
     readiness.state === "ready"
       ? "text-success"
-      : readiness.state === "modify"
+      : readiness.state === "modify" || readiness.state === "modify_positive"
         ? "text-warning"
         : "text-destructive";
 
@@ -507,22 +519,86 @@ function Dashboard() {
               </ul>
             </>
           )}
+
+          {(optionalSkillQuests.length > 0 || skillTests.length > 0) && (
+            <>
+              <div className="mb-2 mt-5 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                <span className="h-1.5 w-1.5 rounded-full bg-warning" /> Optional / Testable
+                <span className="text-muted-foreground/70">Skill-control checks</span>
+              </div>
+              {optionalSkillQuests.length > 0 && (
+                <ul className="mb-3 space-y-2">
+                  {optionalSkillQuests.map((q) => (
+                    <QuestRow
+                      key={q.id}
+                      q={q}
+                      onToggle={() => toggleQuest(q.id)}
+                      onTaskStatusChange={(task, status) =>
+                        updatePrescribedTaskCompletion(selectedDate, task.id, {
+                          status,
+                          actualSets:
+                            status === "completed"
+                              ? task.prescription.sets
+                              : task.completion.actualSets,
+                          actualReps:
+                            status === "completed"
+                              ? task.prescription.reps
+                              : task.completion.actualReps,
+                          actualDurationMinutes:
+                            status === "completed"
+                              ? task.prescription.durationMinutes
+                              : task.completion.actualDurationMinutes,
+                        })
+                      }
+                    />
+                  ))}
+                </ul>
+              )}
+              <div className="space-y-2">
+                {skillTests.map((test) => (
+                  <SkillTestCard
+                    key={test.id}
+                    test={test}
+                    onPass={() =>
+                      updateSkillTestResult(selectedDate, test.id, {
+                        completed: true,
+                        repsCompleted: test.testDose.reps,
+                        painDuring: test.result.painDuring ?? 0,
+                        painAfter: test.result.painAfter ?? 0,
+                        qualityScore: test.result.qualityScore ?? 4,
+                        lagObserved: false,
+                        feltControlled: true,
+                        irritation: false,
+                        swellingResponse: test.result.swellingResponse ?? "unknown",
+                        walkingResponse: test.result.walkingResponse ?? "unknown",
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </Surface>
 
-        <Surface>
-          <CoachPlanCard
-            plan={activePlan}
-            coachNote={latestCoachNote}
-            hasMorningCheckIn={Boolean(m)}
-            hasEveningCheckIn={Boolean(evening)}
-            copiedMorningPacket={copiedMorningPacket}
-            onCopyMorningPacket={copyMorningPacket}
-            onImportPlan={() => setImportOpen(true)}
-            onViewPacket={() => setPacketOpen("morning")}
-            onViewPlan={() => setViewPlanOpen(true)}
-            onArchivePlan={() => activePlan && archiveDailyCoachPlan(activePlan.id)}
-          />
-        </Surface>
+        <div className="space-y-4">
+          <Surface>
+            <CoachPlanCard
+              plan={activePlan}
+              coachNote={latestCoachNote}
+              hasMorningCheckIn={Boolean(m)}
+              hasEveningCheckIn={Boolean(evening)}
+              copiedMorningPacket={copiedMorningPacket}
+              onCopyMorningPacket={copyMorningPacket}
+              onImportPlan={() => setImportOpen(true)}
+              onViewPacket={() => setPacketOpen("morning")}
+              onViewPlan={() => setViewPlanOpen(true)}
+              onArchivePlan={() => activePlan && archiveDailyCoachPlan(activePlan.id)}
+            />
+          </Surface>
+          <Surface>
+            <MilestoneWatchCard items={milestoneWatch} />
+          </Surface>
+        </div>
       </div>
 
       <Link
@@ -906,6 +982,125 @@ function PrescribedTaskRow({
   );
 }
 
+function SkillTestCard({ test, onPass }: { test: SkillTest; onPass: () => void }) {
+  const disabled = test.status === "deferred" || test.status === "passed_pending_confirmation";
+  return (
+    <div className="rounded-xl border border-warning/30 bg-warning/5 px-3 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{test.title}</div>
+          <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {test.description}
+          </div>
+          <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+            <div>{skillTestDoseLine(test)}</div>
+            {test.passCriteria.length > 0 && <div>Pass: {test.passCriteria.join(" · ")}</div>}
+            {test.stopRules.length > 0 && (
+              <div className="text-warning">Stop: {test.stopRules.join(" · ")}</div>
+            )}
+          </div>
+        </div>
+        <span className="rounded-md bg-background/60 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-warning">
+          {formatSkillTestStatus(test.status)}
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onPass}
+          disabled={disabled}
+          className={cn(
+            "rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition",
+            disabled
+              ? "cursor-not-allowed border-border text-muted-foreground opacity-50"
+              : "border-warning/50 text-warning hover:bg-warning/10",
+          )}
+        >
+          Passed test dose
+        </button>
+        <Link to="/check-in" className="text-xs font-medium text-phoenix hover:underline">
+          Record details
+        </Link>
+      </div>
+      {test.result.attemptedAt && (
+        <div className="mt-2 text-xs text-muted-foreground">
+          Result: {formatSkillTestResult(test)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MilestoneWatchCard({ items }: { items: MilestoneWatchItem[] }) {
+  return (
+    <div>
+      <div className="mb-3">
+        <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-phoenix">
+          <Trophy className="h-3.5 w-3.5" /> Milestone Watch
+        </div>
+        <div className="mt-1 text-sm text-muted-foreground">
+          What may unlock next, and what evidence is still needed.
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-border bg-background/40 p-3 text-sm text-muted-foreground">
+          No pending unlocks for this date.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item) => (
+            <div key={item.id} className="rounded-xl border border-border bg-background/40 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">{item.title}</div>
+                  <div className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-warning">
+                    {item.statusLabel}
+                  </div>
+                </div>
+                <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  {formatProgressionType(item.progressionType)}
+                </span>
+              </div>
+              {item.evidence.length > 0 && (
+                <div className="mt-3">
+                  <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    Evidence
+                  </div>
+                  <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                    {item.evidence.map((line) => (
+                      <li key={line}>- {line}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="mt-3">
+                <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  To unlock
+                </div>
+                <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                  {item.unlockCriteria.map((line) => (
+                    <li key={line}>- {line}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
+                <div>
+                  <span className="text-foreground">If confirmed: </span>
+                  {item.nextStepIfConfirmed}
+                </div>
+                <div>
+                  <span className="text-foreground">If not confirmed: </span>
+                  {item.nextStepIfNotConfirmed}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function prescriptionLines(task: PrescribedTask): string[] {
   const p = task.prescription;
   const dose: string[] = [];
@@ -919,6 +1114,41 @@ function prescriptionLines(task: PrescribedTask): string[] {
   if (p.rangeInstruction) lines.push(p.rangeInstruction);
   if (p.qualityTarget) lines.push(`Goal: ${p.qualityTarget}`);
   return lines.length ? lines : ["Complete as prescribed."];
+}
+
+function skillTestDoseLine(test: SkillTest): string {
+  const dose: string[] = [];
+  if (test.testDose.sets)
+    dose.push(`${test.testDose.sets} set${test.testDose.sets === 1 ? "" : "s"}`);
+  if (test.testDose.reps) dose.push(`${test.testDose.reps} reps`);
+  if (test.testDose.duration) dose.push(test.testDose.duration);
+  return [dose.join(" · "), test.testDose.instructions].filter(Boolean).join(" · ");
+}
+
+function formatSkillTestStatus(status: string) {
+  return status
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatProgressionType(type: MilestoneWatchItem["progressionType"]) {
+  return type.replace("_", " ");
+}
+
+function formatSkillTestResult(test: SkillTest) {
+  const result = test.result;
+  const parts = [
+    test.status,
+    result.repsCompleted == null ? "" : `${result.repsCompleted} reps`,
+    result.painDuring == null ? "" : `pain during ${result.painDuring}/10`,
+    result.painAfter == null ? "" : `pain after ${result.painAfter}/10`,
+    result.qualityScore == null ? "" : `quality ${result.qualityScore}/5`,
+    result.lagObserved == null ? "" : result.lagObserved ? "lag observed" : "no lag",
+    result.feltControlled == null ? "" : result.feltControlled ? "controlled" : "not controlled",
+    result.irritation == null ? "" : result.irritation ? "irritation" : "no irritation",
+  ].filter(Boolean);
+  return parts.join(" · ");
 }
 
 function CoachPlanCard({
@@ -1132,6 +1362,59 @@ function CoachPlanDialog({ plan, onClose }: { plan: DailyCoachPlan; onClose: () 
                           </div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {plan.skillTests.length > 0 && (
+            <section className="mt-5">
+              <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                Optional Skill Tests
+              </div>
+              <div className="mt-2 space-y-2">
+                {plan.skillTests.map((test) => (
+                  <div
+                    key={test.id}
+                    className="rounded-lg border border-border bg-background/40 p-3"
+                  >
+                    <div className="text-sm font-medium">{test.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {skillTestDoseLine(test)}
+                    </div>
+                    {test.stopRules.length > 0 && (
+                      <div className="mt-2 text-xs text-warning">
+                        Stop: {test.stopRules.join(" · ")}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {plan.nextUnlocks.length > 0 && (
+            <section className="mt-5">
+              <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                Next Unlocks
+              </div>
+              <div className="mt-2 space-y-2">
+                {plan.nextUnlocks.map((unlock) => (
+                  <div
+                    key={unlock.milestoneId}
+                    className="rounded-lg border border-border bg-background/40 p-3"
+                  >
+                    <div className="text-sm font-medium">{unlock.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {formatSkillTestStatus(unlock.state)}
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      If confirmed: {unlock.nextStepIfConfirmed}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      If not confirmed: {unlock.nextStepIfNotConfirmed}
                     </div>
                   </div>
                 ))}

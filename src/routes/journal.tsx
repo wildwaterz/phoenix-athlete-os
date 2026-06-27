@@ -768,7 +768,7 @@ function buildSystemHistory(s: PhoenixState): SystemHistoryItem[] {
   });
 
   s.milestones
-    .filter((milestone) => milestone.status === "unlocked")
+    .filter((milestone) => milestone.state === "unlocked")
     .forEach((milestone) => {
       const date = localDateFromStoredValue(milestone.unlockedAt);
       items.push({
@@ -777,7 +777,7 @@ function buildSystemHistory(s: PhoenixState): SystemHistoryItem[] {
         createdAt: milestone.unlockedAt ?? systemDateTime(date, "13:00:00"),
         type: "Milestone",
         title: milestone.name,
-        detail: milestone.evidence,
+        detail: milestone.evidenceSummary,
       });
     });
 

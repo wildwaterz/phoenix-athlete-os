@@ -9,19 +9,25 @@ import {
   getEveningForDate,
   getLocalDateKey,
   getMorningForDate,
+  getUtcTimestamp,
   morningCheckInFieldsForPhase,
   phaseForDate,
   saveEveningCheckIn,
   saveMorningCheckIn,
+  skillTestsForDate,
   updatePrescribedTaskCompletion,
+  updateSkillTestResult,
   type CheckInFieldId,
   type EveningCheckIn,
+  type FlexionLimitingFactor,
   type FlexionStatus,
   type MorningCheckIn,
   type PrescribedTask,
   type PrescribedTaskCompletion,
   type PrescribedTaskCompletionStatus,
   type RangeResponse,
+  type SkillTest,
+  type SkillTestResult,
   usePhoenix,
 } from "@/lib/phoenix-data";
 import { Fragment, useState } from "react";
@@ -157,6 +163,14 @@ const flexionStatusOptions: FlexionStatus[] = [
   "comfortable_gentle_bend",
   "stiff_but_tolerable",
   "painful_or_pinching",
+];
+
+const flexionLimitingFactorOptions: FlexionLimitingFactor[] = [
+  "joint_limited",
+  "incision_limited",
+  "swelling_limited",
+  "pain_limited",
+  "unknown",
 ];
 
 const responseOptions: RangeResponse[] = [
@@ -311,18 +325,36 @@ function renderMorningField(
       );
     case "flexion-status":
       return (
-        <FieldSlot field={field} label="Flexion comfort/status">
-          <SelectInput
-            value={m.flexionStatus}
-            onChange={(ev) => updateMorning({ flexionStatus: ev.target.value as FlexionStatus })}
-          >
-            {flexionStatusOptions.map((option) => (
-              <option key={option} value={option}>
-                {formatOption(option)}
-              </option>
-            ))}
-          </SelectInput>
-        </FieldSlot>
+        <>
+          <FieldSlot field={field} label="Flexion comfort/status">
+            <SelectInput
+              value={m.flexionStatus}
+              onChange={(ev) => updateMorning({ flexionStatus: ev.target.value as FlexionStatus })}
+            >
+              {flexionStatusOptions.map((option) => (
+                <option key={option} value={option}>
+                  {formatOption(option)}
+                </option>
+              ))}
+            </SelectInput>
+          </FieldSlot>
+          <Field label="Flexion limiting factor">
+            <SelectInput
+              value={m.flexionLimitingFactor ?? "unknown"}
+              onChange={(ev) =>
+                updateMorning({
+                  flexionLimitingFactor: ev.target.value as FlexionLimitingFactor,
+                })
+              }
+            >
+              {flexionLimitingFactorOptions.map((option) => (
+                <option key={option} value={option}>
+                  {formatOption(option)}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+        </>
       );
     case "movement-quality":
       return (
@@ -442,14 +474,24 @@ function renderEveningField(
       );
     case "walking-confidence":
       return (
-        <FieldSlot field={field} label="Walking confidence after" hint="1 — 5">
-          <Slider
-            value={e.walkingConfidenceAfter ?? e.walkingConfidence}
-            onChange={(v) => updateEvening({ walkingConfidence: v, walkingConfidenceAfter: v })}
-            min={1}
-            max={5}
-          />
-        </FieldSlot>
+        <>
+          <FieldSlot field={field} label="Walking confidence after" hint="1 — 5">
+            <Slider
+              value={e.walkingConfidenceAfter ?? e.walkingConfidence}
+              onChange={(v) => updateEvening({ walkingConfidence: v, walkingConfidenceAfter: v })}
+              min={1}
+              max={5}
+            />
+          </FieldSlot>
+          <Field label="Gait quality after" hint="1 compensation — 5 clean">
+            <Slider
+              value={e.gaitQualityAfter ?? e.movementQualityAfter ?? 3}
+              onChange={(v) => updateEvening({ gaitQualityAfter: v, movementQualityAfter: v })}
+              min={1}
+              max={5}
+            />
+          </Field>
+        </>
       );
     case "quad-activation-quality":
       return (
@@ -481,18 +523,38 @@ function renderEveningField(
       );
     case "flexion-response":
       return (
-        <FieldSlot field={field}>
-          <SelectInput
-            value={e.flexionResponse}
-            onChange={(ev) => updateEvening({ flexionResponse: ev.target.value as RangeResponse })}
-          >
-            {responseOptions.map((option) => (
-              <option key={option} value={option}>
-                {formatOption(option)}
-              </option>
-            ))}
-          </SelectInput>
-        </FieldSlot>
+        <>
+          <FieldSlot field={field}>
+            <SelectInput
+              value={e.flexionResponse}
+              onChange={(ev) =>
+                updateEvening({ flexionResponse: ev.target.value as RangeResponse })
+              }
+            >
+              {responseOptions.map((option) => (
+                <option key={option} value={option}>
+                  {formatOption(option)}
+                </option>
+              ))}
+            </SelectInput>
+          </FieldSlot>
+          <Field label="Flexion limiting factor">
+            <SelectInput
+              value={e.flexionLimitingFactor ?? "unknown"}
+              onChange={(ev) =>
+                updateEvening({
+                  flexionLimitingFactor: ev.target.value as FlexionLimitingFactor,
+                })
+              }
+            >
+              {flexionLimitingFactorOptions.map((option) => (
+                <option key={option} value={option}>
+                  {formatOption(option)}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+        </>
       );
     case "movement-quality":
       return (
@@ -694,6 +756,197 @@ function PrescribedTaskResponseSection({
   );
 }
 
+const skillResponseOptions: Array<NonNullable<SkillTestResult["swellingResponse"]>> = [
+  "not_assessed",
+  "same",
+  "better",
+  "worse",
+  "unknown",
+];
+
+function booleanSelectValue(value: boolean | undefined): string {
+  if (value === true) return "yes";
+  if (value === false) return "no";
+  return "unknown";
+}
+
+function booleanFromSelect(value: string): boolean | undefined {
+  if (value === "yes") return true;
+  if (value === "no") return false;
+  return undefined;
+}
+
+function SkillTestResponseSection({
+  tests,
+  e,
+  updateTest,
+}: {
+  tests: SkillTest[];
+  e: EveningCheckIn;
+  updateTest: (test: SkillTest, patch: Partial<SkillTestResult>) => void;
+}) {
+  if (tests.length === 0) return null;
+  return (
+    <div className="mb-6 rounded-xl border border-warning/30 bg-warning/5 p-4">
+      <div className="mb-3">
+        <div className="text-sm font-semibold tracking-tight">Skill test responses</div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          Record optional tests separately from required quests so pending milestones can be
+          confirmed tomorrow.
+        </div>
+      </div>
+      <div className="space-y-3">
+        {tests.map((test) => {
+          const result = e.skillTestResults?.[test.id] ?? test.result;
+          const attemptStatus = result.attemptedAt
+            ? result.completed
+              ? "completed"
+              : "attempted"
+            : "not_attempted";
+          return (
+            <div key={test.id} className="rounded-lg border border-border/80 bg-card/40 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{test.title}</div>
+                  <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {test.testDose.instructions}
+                  </div>
+                </div>
+                <select
+                  value={attemptStatus}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value === "not_attempted") return;
+                    updateTest(test, {
+                      completed: value === "completed",
+                      repsCompleted: result.repsCompleted ?? test.testDose.reps,
+                    });
+                  }}
+                  className="rounded-lg border border-border bg-background/40 px-2 py-1.5 text-sm outline-none focus:border-phoenix"
+                >
+                  <option value="not_attempted">Not attempted</option>
+                  <option value="attempted">Attempted</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <Field label="Reps completed">
+                  <TaskNumberInput
+                    value={result.repsCompleted}
+                    onChange={(value) => updateTest(test, { repsCompleted: value })}
+                  />
+                </Field>
+                <Field label="Pain during">
+                  <TaskNumberInput
+                    value={result.painDuring}
+                    max={10}
+                    onChange={(value) => updateTest(test, { painDuring: value })}
+                  />
+                </Field>
+                <Field label="Pain after">
+                  <TaskNumberInput
+                    value={result.painAfter}
+                    max={10}
+                    onChange={(value) => updateTest(test, { painAfter: value })}
+                  />
+                </Field>
+                <Field label="Quality / control" hint="1 — 5">
+                  <TaskNumberInput
+                    value={result.qualityScore}
+                    min={1}
+                    max={5}
+                    onChange={(value) => updateTest(test, { qualityScore: value })}
+                  />
+                </Field>
+                <Field label="Any lag?">
+                  <SelectInput
+                    value={booleanSelectValue(result.lagObserved)}
+                    onChange={(event) =>
+                      updateTest(test, { lagObserved: booleanFromSelect(event.target.value) })
+                    }
+                  >
+                    <option value="unknown">Unknown</option>
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                  </SelectInput>
+                </Field>
+                <Field label="Controlled?">
+                  <SelectInput
+                    value={booleanSelectValue(result.feltControlled)}
+                    onChange={(event) =>
+                      updateTest(test, { feltControlled: booleanFromSelect(event.target.value) })
+                    }
+                  >
+                    <option value="unknown">Unknown</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </SelectInput>
+                </Field>
+                <Field label="Irritation?">
+                  <SelectInput
+                    value={booleanSelectValue(result.irritation)}
+                    onChange={(event) =>
+                      updateTest(test, { irritation: booleanFromSelect(event.target.value) })
+                    }
+                  >
+                    <option value="unknown">Unknown</option>
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                  </SelectInput>
+                </Field>
+                <Field label="Swelling response">
+                  <SelectInput
+                    value={result.swellingResponse ?? "unknown"}
+                    onChange={(event) =>
+                      updateTest(test, {
+                        swellingResponse: event.target.value as NonNullable<
+                          SkillTestResult["swellingResponse"]
+                        >,
+                      })
+                    }
+                  >
+                    {skillResponseOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {formatOption(option)}
+                      </option>
+                    ))}
+                  </SelectInput>
+                </Field>
+                <Field label="Walking response">
+                  <SelectInput
+                    value={result.walkingResponse ?? "unknown"}
+                    onChange={(event) =>
+                      updateTest(test, {
+                        walkingResponse: event.target.value as NonNullable<
+                          SkillTestResult["walkingResponse"]
+                        >,
+                      })
+                    }
+                  >
+                    {skillResponseOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {formatOption(option)}
+                      </option>
+                    ))}
+                  </SelectInput>
+                </Field>
+              </div>
+              <div className="mt-3">
+                <TextArea
+                  value={result.notes ?? ""}
+                  onChange={(event) => updateTest(test, { notes: event.target.value })}
+                  placeholder="Was there lag, guarding, irritation, or worse walking afterward?"
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CheckInPage() {
   const s = usePhoenix();
   const today = getLocalDateKey();
@@ -712,6 +965,7 @@ function CheckInPage() {
   const prescribedTasks = dailyQuestsForDate(s, selectedDate)
     .flatMap((quest) => quest.prescribedTasks ?? [])
     .filter((task) => task.category !== "check_in" && task.category !== "reflection");
+  const skillTests = skillTestsForDate(s, selectedDate);
   const hasMorning = Boolean(savedMorning);
   const hasEvening = Boolean(savedEvening);
 
@@ -743,6 +997,22 @@ function CheckInPage() {
       taskCompletions: {
         ...(e.taskCompletions ?? {}),
         [task.id]: next,
+      },
+    });
+  };
+  const updateSkillTest = (test: SkillTest, patch: Partial<SkillTestResult>) => {
+    const previous = e.skillTestResults?.[test.id] ?? test.result;
+    const next = {
+      ...previous,
+      ...patch,
+      attemptedAt: patch.attemptedAt ?? previous.attemptedAt ?? getUtcTimestamp(),
+      completed: patch.completed ?? previous.completed,
+    };
+    updateSkillTestResult(selectedDate, test.id, next);
+    updateEvening({
+      skillTestResults: {
+        ...(e.skillTestResults ?? {}),
+        [test.id]: next,
       },
     });
   };
@@ -831,6 +1101,7 @@ function CheckInPage() {
       ) : (
         <Surface>
           <PrescribedTaskResponseSection tasks={prescribedTasks} e={e} updateTask={updateTask} />
+          <SkillTestResponseSection tests={skillTests} e={e} updateTest={updateSkillTest} />
           <div className="grid gap-5 md:grid-cols-2">
             {eveningFieldIds.map((field) => (
               <Fragment key={field}>{renderEveningField(field, e, updateEvening)}</Fragment>

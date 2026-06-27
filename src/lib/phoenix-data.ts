@@ -75,6 +75,13 @@ export type CheckInFieldId =
 export type SwellingContext = "surgical_baseline" | "activity_response" | "unknown";
 export type SwellingTrend = "improved" | "stable" | "worse" | "unknown";
 
+export type FlexionLimitingFactor =
+  | "joint_limited"
+  | "incision_limited"
+  | "swelling_limited"
+  | "pain_limited"
+  | "unknown";
+
 export type MetricDirection = "lower-better" | "higher-better";
 
 export type ExtensionStatus =
@@ -176,17 +183,47 @@ export interface Mission {
 
 export interface Milestone {
   id: string;
+  title: string;
   mission: MissionId;
   missionId: MissionId;
   trackId: RecoveryTrackId;
   name: string;
   description: string;
   why: string;
-  evidence: string;
+  evidence: MilestoneEvidence[];
+  evidenceSummary: string;
   criteria: string[];
-  status: "locked" | "in-progress" | "unlocked";
+  unlockCriteria: string[];
+  nextStepIfConfirmed: string;
+  nextStepIfNotConfirmed: string;
+  progressionType: ProgressionType;
+  state: MilestoneState;
+  status: MilestoneState;
   unlockedAt?: string;
   coachNotes?: string;
+  allowsImmediateUnlock?: boolean;
+}
+
+export type MilestoneState =
+  | "locked"
+  | "testable"
+  | "test_passed_pending_confirmation"
+  | "unlocked"
+  | "paused";
+
+export type MilestoneEvidenceType =
+  | "check_in"
+  | "quest_completion"
+  | "skill_test"
+  | "coach_note"
+  | "coach_plan"
+  | "manual";
+
+export interface MilestoneEvidence {
+  date: string;
+  type: MilestoneEvidenceType;
+  summary: string;
+  confidence: "low" | "medium" | "high";
 }
 
 export interface MorningCheckIn {
@@ -200,8 +237,10 @@ export interface MorningCheckIn {
   swellingTrend?: SwellingTrend;
   swellingContext?: SwellingContext;
   walkingConfidence: number;
+  gaitQuality?: number;
   extensionStatus: ExtensionStatus;
   flexionStatus: FlexionStatus;
+  flexionLimitingFactor?: FlexionLimitingFactor;
   sleepHours: number;
   weightKg: number;
   proteinTargetG: number;
@@ -225,15 +264,18 @@ export interface EveningCheckIn {
   swellingChange: number; // -3..+3
   walkingConfidence: number;
   walkingConfidenceAfter?: number;
+  gaitQualityAfter?: number;
   quadActivationQuality: number;
   extensionResponse: RangeResponse;
   flexionResponse: RangeResponse;
+  flexionLimitingFactor?: FlexionLimitingFactor;
   concerningSymptoms: string;
   movementQualityAfter?: number;
   energyFatigue?: number;
   milestones: string;
   todayWin?: string;
   taskCompletions?: Record<string, PrescribedTaskCompletion>;
+  skillTestResults?: Record<string, SkillTestResult>;
   notes: string;
 }
 
@@ -264,6 +306,15 @@ export type QuestSource =
   | "baseline";
 
 export type QuestStatus = "pending" | "complete" | "skipped";
+
+export type QuestType =
+  | "required_action"
+  | "optional_skill_test"
+  | "recovery_basic"
+  | "check_in"
+  | "monitoring";
+
+export type ProgressionType = "load" | "skill_control" | "rom" | "walking" | "recovery";
 
 export type PrescribedTaskCategory =
   | "check_in"
@@ -307,6 +358,57 @@ export interface PrescribedTask {
   completion: PrescribedTaskCompletion;
 }
 
+export type SkillTestStatus =
+  | "available"
+  | "attempted"
+  | "passed_pending_confirmation"
+  | "failed"
+  | "deferred";
+
+export interface SkillTestDose {
+  sets?: number;
+  reps?: number;
+  duration?: string;
+  instructions: string;
+}
+
+export interface SkillTestResponseRequired {
+  eveningCheckInRequired: boolean;
+  nextMorningCheckInRequired: boolean;
+}
+
+export interface SkillTestResult {
+  attemptedAt?: string;
+  completed: boolean;
+  repsCompleted?: number;
+  painDuring?: number;
+  painAfter?: number;
+  qualityScore?: number;
+  lagObserved?: boolean;
+  feltControlled?: boolean;
+  irritation?: boolean;
+  swellingResponse?: "not_assessed" | "same" | "better" | "worse" | "unknown";
+  walkingResponse?: "not_assessed" | "same" | "better" | "worse" | "unknown";
+  notes?: string;
+}
+
+export interface SkillTest {
+  id: string;
+  date: string;
+  localDate?: string;
+  timestampUtc?: string;
+  relatedMilestoneId: string;
+  title: string;
+  description: string;
+  status: SkillTestStatus;
+  progressionType: ProgressionType;
+  testDose: SkillTestDose;
+  passCriteria: string[];
+  stopRules: string[];
+  responseRequired: SkillTestResponseRequired;
+  result: SkillTestResult;
+}
+
 export type DashboardObjectiveGroup =
   | "check-in"
   | "movement"
@@ -333,6 +435,9 @@ export interface Quest {
   relatedQuestIds?: string[];
   objectiveGroup?: DashboardObjectiveGroup;
   prescribedTasks?: PrescribedTask[];
+  questType?: QuestType;
+  progressionType?: ProgressionType;
+  relatedMilestoneId?: string;
   phaseId?: PhaseId;
   trackIds?: RecoveryTrackId[];
   missionId?: MissionId;
@@ -449,6 +554,24 @@ export type DailyCoachPlanSource = "ChatGPT" | "physio" | "surgeon" | "trainer" 
 
 export type DailyCoachPlanStatus = "draft" | "active" | "archived" | "replaced";
 
+export interface DailyCoachPlanMilestoneUpdate {
+  milestoneId: string;
+  state: MilestoneState;
+  summary: string;
+  nextStepIfConfirmed?: string;
+  nextStepIfNotConfirmed?: string;
+  confidence?: MilestoneEvidence["confidence"];
+}
+
+export interface DailyCoachPlanNextUnlock {
+  milestoneId: string;
+  title: string;
+  state: MilestoneState;
+  evidenceNeeded: string[];
+  nextStepIfConfirmed: string;
+  nextStepIfNotConfirmed: string;
+}
+
 export interface DailyCoachPlan {
   id: string;
   date: string;
@@ -463,7 +586,7 @@ export interface DailyCoachPlan {
   phaseId: PhaseId;
   missionIds: MissionId[];
   trackIds: RecoveryTrackId[];
-  readiness: "ready" | "modify" | "recover";
+  readiness: "ready" | "modify" | "modify_positive" | "recover";
   readinessReason?: string;
   primaryFocus: string;
   focus: string;
@@ -474,6 +597,9 @@ export interface DailyCoachPlan {
   confidence: "High" | "Medium" | "Low";
   targets: DailyCoachPlanTarget[];
   quests: DailyQuest[];
+  skillTests: SkillTest[];
+  milestoneUpdates: DailyCoachPlanMilestoneUpdate[];
+  nextUnlocks: DailyCoachPlanNextUnlock[];
   stopRules: string[];
   eveningCheckInFocus: string[];
   notes: string;
@@ -505,7 +631,7 @@ export interface CoachPacket {
   currentMissions: Pick<Mission, "id" | "name" | "objective">[];
   recoveryIq: { level: number; xp: number };
   readiness: {
-    status: "ready" | "modify" | "recover";
+    status: "ready" | "modify" | "modify_positive" | "recover";
     label: string;
     summary: string;
     reason?: string;
@@ -517,9 +643,15 @@ export interface CoachPacket {
   dailyCoachPlan?: DailyCoachPlan;
   smallWin?: SmallWin;
   milestones: {
+    id: string;
     name: string;
+    state: MilestoneState;
     status: Milestone["status"];
     unlockedAt: string | null;
+    evidence: MilestoneEvidence[];
+    unlockCriteria: string[];
+    nextStepIfConfirmed: string;
+    nextStepIfNotConfirmed: string;
   }[];
   dailyQuests: {
     date: string;
@@ -533,6 +665,8 @@ export interface CoachPacket {
     prescribedTasks?: PrescribedTask[];
   }[];
   prescribedTasks?: PrescribedTask[];
+  skillTests?: SkillTest[];
+  nextUnlocks?: MilestoneWatchItem[];
   completedToday: string[];
   pendingToday: string[];
   coachNotesRecent: CoachNote[];
@@ -556,6 +690,7 @@ export interface PhoenixState {
   history: { morning: MorningCheckIn[]; evening: EveningCheckIn[] };
   milestones: Milestone[];
   todayQuests: DailyQuest[];
+  skillTests: SkillTest[];
   dailyCoachPlans: DailyCoachPlan[];
   coachNotes: CoachNote[];
   athleteNotes: AthleteNote[];
@@ -1236,7 +1371,7 @@ export const MISSIONS: Mission[] = [
       "Straight leg raise with no lag",
       "Terminal knee extension to neutral",
     ],
-    milestoneIds: ["m-quad-activation-4", "m-slr-no-lag"],
+    milestoneIds: ["m-quad-activation-4", "straight_leg_raise_no_lag"],
     possibleQuestIds: ["quad-activation", "activation-check-in", "supported-walking"],
     nextUnlock: "Restore Range",
     status: "active",
@@ -1326,108 +1461,201 @@ export const MISSIONS: Mission[] = [
   },
 ];
 
+function seedMilestoneEvidence(
+  summary: string,
+  type: MilestoneEvidenceType = "manual",
+  confidence: MilestoneEvidence["confidence"] = "medium",
+  date = "2026-06-25",
+): MilestoneEvidence {
+  return { date, type, summary, confidence };
+}
+
 const seedMilestones: Milestone[] = [
   {
     id: "m-pain-baseline",
+    title: "Stable pain baseline",
     mission: "calm-the-knee",
     missionId: "calm-the-knee",
     trackId: "symptoms",
     name: "Stable pain baseline",
-    description: "Five consecutive days at pain ≤ 2/10.",
+    description: "Five consecutive days at pain <= 2/10.",
     why: "Proves the tissue has exited the acute reactive window.",
-    evidence: "5 consecutive morning check-ins ≤ 2/10",
-    criteria: ["Pain ≤ 2/10 at rest for 5 consecutive days"],
+    evidence: [
+      seedMilestoneEvidence("5 consecutive morning check-ins <= 2/10", "check_in", "high"),
+    ],
+    evidenceSummary: "5 consecutive morning check-ins <= 2/10",
+    criteria: ["Pain <= 2/10 at rest for 5 consecutive days"],
+    unlockCriteria: ["Pain <= 2/10 at rest for 5 consecutive days"],
+    nextStepIfConfirmed: "Maintain the low symptom floor while activation work begins.",
+    nextStepIfNotConfirmed: "Keep symptom control as the primary focus.",
+    progressionType: "recovery",
+    state: "unlocked",
     status: "unlocked",
     unlockedAt: "2025-06-12",
     coachNotes: "Earned. Move to activation work without losing this floor.",
   },
   {
     id: "m-swelling-controlled",
+    title: "Swelling under control",
     mission: "calm-the-knee",
     missionId: "calm-the-knee",
     trackId: "symptoms",
     name: "Swelling under control",
-    description: "Morning swelling ≤ 2/10 for 7 days.",
+    description: "Morning swelling <= 2/10 for 7 days.",
     why: "Swelling inhibits quad firing. Control it first.",
-    evidence: "7 morning check-ins ≤ 2/10",
-    criteria: ["Morning swelling ≤ 2/10 for 7 days", "No activity-induced swelling spike"],
+    evidence: [
+      seedMilestoneEvidence("7 morning check-ins <= 2/10", "check_in", "high", "2025-06-15"),
+    ],
+    evidenceSummary: "7 morning check-ins <= 2/10",
+    criteria: ["Morning swelling <= 2/10 for 7 days", "No activity-induced swelling spike"],
+    unlockCriteria: ["Morning swelling <= 2/10 for 7 days", "No activity-induced swelling spike"],
+    nextStepIfConfirmed: "Keep swelling control as background support while activation progresses.",
+    nextStepIfNotConfirmed: "Hold activity volume and keep recovery support central.",
+    progressionType: "recovery",
+    state: "unlocked",
     status: "unlocked",
     unlockedAt: "2025-06-15",
   },
   {
     id: "m-quad-activation-4",
+    title: "Quad activation 4/5",
     mission: "wake-the-quad",
     missionId: "wake-the-quad",
     trackId: "activation",
     name: "Quad activation 4/5",
     description: "Voluntary quad activation reported 4/5 across a week.",
     why: "Neuromuscular control is the gate to load tolerance.",
-    evidence: "Self-rated activation ≥ 4 on 5 of 7 days",
-    criteria: ["Quad activation ≥ 4/5 on 5 of 7 days", "No symptom increase from activation work"],
-    status: "in-progress",
+    evidence: [seedMilestoneEvidence("Quad activation is being logged after daily work.")],
+    evidenceSummary: "Self-rated activation >= 4 on 5 of 7 days",
+    criteria: ["Quad activation >= 4/5 on 5 of 7 days", "No symptom increase from activation work"],
+    unlockCriteria: [
+      "Quad activation >= 4/5 on 5 of 7 days",
+      "No symptom increase from activation work",
+    ],
+    nextStepIfConfirmed: "Consider small skill-control exposure, not load progression.",
+    nextStepIfNotConfirmed: "Repeat quad sets and keep activation quality as the target.",
+    progressionType: "skill_control",
+    state: "testable",
+    status: "testable",
   },
   {
-    id: "m-slr-no-lag",
+    id: "straight_leg_raise_no_lag",
+    title: "Straight Leg Raise - No Lag",
     mission: "wake-the-quad",
     missionId: "wake-the-quad",
     trackId: "activation",
-    name: "Straight leg raise — no lag",
+    name: "Straight Leg Raise - No Lag",
     description: "Lift the leg with the knee fully locked.",
     why: "Lag indicates incomplete extension control.",
-    evidence: "Video-confirmed SLR, knee locked",
+    evidence: [
+      seedMilestoneEvidence(
+        "Candidate skill-control milestone. Do not unlock until evening and next-morning response confirm tolerance.",
+        "manual",
+        "medium",
+      ),
+    ],
+    evidenceSummary: "Video or self-check SLR with no lag plus stable delayed response",
     criteria: ["Straight leg raise without lag when clinically appropriate"],
-    status: "in-progress",
+    unlockCriteria: [
+      "Evening pain remains <= 3/10",
+      "Swelling is stable or improved",
+      "Extension remains neutral",
+      "Walking quality does not worsen",
+      "No delayed irritation",
+      "Next-morning baseline is stable",
+    ],
+    nextStepIfConfirmed: "Tomorrow may add SLR 1x5 clean reps, no load.",
+    nextStepIfNotConfirmed: "Keep SLR possible but not doseable. Return to quad sets only.",
+    progressionType: "skill_control",
+    state: "testable",
+    status: "testable",
   },
   {
     id: "m-extension-0",
+    title: "Passive extension to neutral",
     mission: "restore-extension",
     missionId: "restore-extension",
     trackId: "rom",
-    name: "Passive extension to 0°",
-    description: "Heel-prop reaches contralateral extension.",
+    name: "Passive extension to neutral",
+    description: "Relaxed extension reaches neutral without forcing.",
     why: "Lost extension changes gait and loads other joints.",
-    evidence: "Goniometer or side-by-side video",
+    evidence: [
+      seedMilestoneEvidence("Relaxed extension status and response still need confirmation."),
+    ],
+    evidenceSummary: "Relaxed extension status plus next-morning response",
     criteria: ["Extension reaches neutral", "No sharp end-range pain pattern"],
+    unlockCriteria: ["Extension reaches neutral", "No sharp end-range pain pattern"],
+    nextStepIfConfirmed: "Keep gentle extension exposure in the plan at the tolerated dose.",
+    nextStepIfNotConfirmed: "Use shorter relaxed exposures and avoid forced end range.",
+    progressionType: "rom",
+    state: "locked",
     status: "locked",
   },
   {
     id: "m-flexion-comfortable",
+    title: "Comfortable flexion improving",
     mission: "restore-extension",
     missionId: "restore-extension",
     trackId: "rom",
     name: "Comfortable flexion improving",
     description: "Flexion improves or holds steady without next-day symptom increase.",
     why: "Flexion supports comfort, sitting, stairs, biking, and later training options.",
-    evidence: "Flexion log + next-morning swelling and pain response",
+    evidence: [seedMilestoneEvidence("Flexion comfort is being tracked with limiting factor.")],
+    evidenceSummary: "Flexion log plus next-morning swelling and pain response",
     criteria: ["Flexion improves or remains stable", "No next-day swelling increase"],
-    status: "in-progress",
+    unlockCriteria: ["Flexion improves or remains stable", "No next-day swelling increase"],
+    nextStepIfConfirmed: "Repeat or gently progress comfortable flexion exposure.",
+    nextStepIfNotConfirmed: "Keep flexion in a smaller comfortable range.",
+    progressionType: "rom",
+    state: "testable",
+    status: "testable",
   },
   {
     id: "m-walking-quality",
+    title: "Clean supported walking",
     mission: "normalize-walking",
     missionId: "normalize-walking",
     trackId: "walking-movement",
     name: "Clean supported walking",
     description: "Walking quality improves without forcing support reduction.",
     why: "Clean mechanics matter more than dropping crutches quickly.",
-    evidence: "Walking confidence trend + no next-day swelling response",
+    evidence: [
+      seedMilestoneEvidence("Walking confidence and gait quality are tracked separately."),
+    ],
+    evidenceSummary: "Walking confidence trend plus gait quality and no next-day swelling response",
     criteria: [
       "Walking confidence improving",
       "No limp compensation",
       "No next-day swelling spike",
     ],
+    unlockCriteria: [
+      "Walking confidence improving",
+      "Gait quality does not worsen",
+      "No next-day swelling spike",
+    ],
+    nextStepIfConfirmed: "Keep support reduction optional and quality-gated.",
+    nextStepIfNotConfirmed: "Do not reward no-crutch walking if gait quality worsens.",
+    progressionType: "walking",
+    state: "locked",
     status: "locked",
   },
   {
     id: "m-walk-30",
+    title: "30-minute pain-free walk",
     mission: "build-capacity",
     missionId: "build-capacity",
     trackId: "capacity",
     name: "30-minute pain-free walk",
-    description: "Continuous walk with pain ≤ 2/10 and no swelling spike next day.",
+    description: "Continuous walk with pain <= 2/10 and no swelling spike next day.",
     why: "Capacity is proven by the next morning's response.",
-    evidence: "Walk log + next-morning check-in",
-    criteria: ["30-minute walk pain ≤ 2/10", "No swelling spike the next morning"],
+    evidence: [seedMilestoneEvidence("Walk log plus next-morning check-in required.")],
+    evidenceSummary: "Walk log plus next-morning check-in",
+    criteria: ["30-minute walk pain <= 2/10", "No swelling spike the next morning"],
+    unlockCriteria: ["30-minute walk pain <= 2/10", "No swelling spike the next morning"],
+    nextStepIfConfirmed: "Capacity walking can become a prescribed task.",
+    nextStepIfNotConfirmed: "Repeat shorter supported walking exposures.",
+    progressionType: "walking",
+    state: "locked",
     status: "locked",
   },
 ];
@@ -1454,8 +1682,10 @@ export function createDefaultMorningCheckIn(
     swellingTrend: "stable",
     swellingContext: "surgical_baseline",
     walkingConfidence: 3,
+    gaitQuality: 3,
     extensionStatus: "slightly_limited",
     flexionStatus: "comfortable_gentle_bend",
+    flexionLimitingFactor: "unknown",
     sleepHours: 7,
     weightKg: 85,
     proteinTargetG: 160,
@@ -1481,12 +1711,15 @@ export function createDefaultEveningCheckIn(
     swellingChange: 0,
     walkingConfidence: 3,
     walkingConfidenceAfter: 3,
+    gaitQualityAfter: 3,
     quadActivationQuality: 3,
     extensionResponse: "felt_same",
     flexionResponse: "felt_same",
+    flexionLimitingFactor: "unknown",
     concerningSymptoms: "",
     milestones: "",
     taskCompletions: {},
+    skillTestResults: {},
     notes: "",
   };
 }
@@ -1501,8 +1734,10 @@ const seedMorningHistory: MorningCheckIn[] = [
     swellingTrend: "unknown",
     swellingContext: "unknown",
     walkingConfidence: 2,
+    gaitQuality: 2,
     extensionStatus: "moderately_limited",
     flexionStatus: "stiff_but_tolerable",
+    flexionLimitingFactor: "swelling_limited",
     sleepHours: 6.5,
     weightKg: 86,
     proteinTargetG: 170,
@@ -1518,8 +1753,10 @@ const seedMorningHistory: MorningCheckIn[] = [
     swellingTrend: "improved",
     swellingContext: "surgical_baseline",
     walkingConfidence: 3,
+    gaitQuality: 3,
     extensionStatus: "slightly_limited",
     flexionStatus: "comfortable_gentle_bend",
+    flexionLimitingFactor: "unknown",
     sleepHours: 7,
     weightKg: 86,
     proteinTargetG: 170,
@@ -1535,8 +1772,10 @@ const seedMorningHistory: MorningCheckIn[] = [
     swellingTrend: "stable",
     swellingContext: "surgical_baseline",
     walkingConfidence: 3,
+    gaitQuality: 3,
     extensionStatus: "slightly_limited",
     flexionStatus: "comfortable_gentle_bend",
+    flexionLimitingFactor: "unknown",
     sleepHours: 7,
     weightKg: 86,
     proteinTargetG: 170,
@@ -1579,8 +1818,10 @@ const seedTodayMorning: MorningCheckIn = {
   swellingTrend: "stable",
   swellingContext: "surgical_baseline",
   walkingConfidence: 4,
+  gaitQuality: 3,
   extensionStatus: "slightly_limited",
   flexionStatus: "comfortable_gentle_bend",
+  flexionLimitingFactor: "unknown",
   sleepHours: 7.5,
   weightKg: 86,
   proteinTargetG: 170,
@@ -1613,6 +1854,7 @@ const initial: PhoenixState = {
   history: { morning: seedMorningHistory, evening: [] },
   milestones: seedMilestones,
   todayQuests: [],
+  skillTests: [],
   dailyCoachPlans: [],
   coachNotes: seedCoachNotes,
   athleteNotes: seedAthleteNotes,
@@ -1881,6 +2123,159 @@ function normalizeRangeResponse(value: unknown): RangeResponse {
     : "not_tested";
 }
 
+function normalizeFlexionLimitingFactor(value: unknown): FlexionLimitingFactor {
+  return value === "joint_limited" ||
+    value === "incision_limited" ||
+    value === "swelling_limited" ||
+    value === "pain_limited" ||
+    value === "unknown"
+    ? value
+    : "unknown";
+}
+
+function normalizeMilestoneId(value: unknown): string {
+  const id = stringValue(value);
+  if (id === "m-slr-no-lag") return "straight_leg_raise_no_lag";
+  return id;
+}
+
+function normalizeMilestoneState(value: unknown): MilestoneState {
+  if (value === "in-progress") return "testable";
+  return value === "locked" ||
+    value === "testable" ||
+    value === "test_passed_pending_confirmation" ||
+    value === "unlocked" ||
+    value === "paused"
+    ? value
+    : "locked";
+}
+
+function normalizeProgressionType(value: unknown, fallback: ProgressionType): ProgressionType {
+  return value === "load" ||
+    value === "skill_control" ||
+    value === "rom" ||
+    value === "walking" ||
+    value === "recovery"
+    ? value
+    : fallback;
+}
+
+function normalizeMilestoneEvidenceType(value: unknown): MilestoneEvidenceType {
+  return value === "check_in" ||
+    value === "quest_completion" ||
+    value === "skill_test" ||
+    value === "coach_note" ||
+    value === "coach_plan" ||
+    value === "manual"
+    ? value
+    : "manual";
+}
+
+function normalizeEvidenceConfidence(value: unknown): MilestoneEvidence["confidence"] {
+  return value === "low" || value === "medium" || value === "high" ? value : "medium";
+}
+
+function normalizeMilestoneEvidence(
+  value: unknown,
+  fallbackSummary: string,
+  fallbackDate = getLocalDateKey(),
+): MilestoneEvidence[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === "string") {
+          const summary = item.trim();
+          return summary
+            ? {
+                date: fallbackDate,
+                type: "manual" as MilestoneEvidenceType,
+                summary,
+                confidence: "medium" as const,
+              }
+            : null;
+        }
+        if (!item || typeof item !== "object") return null;
+        const record = item as Record<string, unknown>;
+        const summary = stringValue(record.summary) || fallbackSummary;
+        if (!summary) return null;
+        return {
+          date: stringValue(record.date) || fallbackDate,
+          type: normalizeMilestoneEvidenceType(record.type),
+          summary,
+          confidence: normalizeEvidenceConfidence(record.confidence),
+        };
+      })
+      .filter((item): item is MilestoneEvidence => Boolean(item));
+  }
+  const summary = stringValue(value) || fallbackSummary;
+  return summary ? [{ date: fallbackDate, type: "manual", summary, confidence: "medium" }] : [];
+}
+
+function normalizeMilestone(
+  value: unknown,
+  activeMissionId: MissionId,
+  missions: Mission[],
+): Milestone | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<Milestone> & {
+    id?: string;
+    evidence?: string | MilestoneEvidence[];
+    state?: MilestoneState | "in-progress";
+    status?: MilestoneState | "in-progress";
+  };
+  const id = normalizeMilestoneId(raw.id);
+  const seed = seedMilestones.find((item) => item.id === id);
+  const missionId = (raw.missionId ??
+    raw.mission ??
+    seed?.missionId ??
+    activeMissionId) as MissionId;
+  const mission = missions.find((item) => item.id === missionId);
+  const trackId = (raw.trackId ??
+    seed?.trackId ??
+    mission?.trackIds[0] ??
+    "symptoms") as RecoveryTrackId;
+  const name = raw.name ?? raw.title ?? seed?.name ?? "Milestone";
+  const evidenceSummary =
+    raw.evidenceSummary ??
+    seed?.evidenceSummary ??
+    (typeof raw.evidence === "string" ? raw.evidence : "") ??
+    name;
+  const state = normalizeMilestoneState(raw.state ?? raw.status ?? seed?.state);
+  return {
+    ...(seed ?? {}),
+    ...raw,
+    id,
+    title: raw.title ?? name,
+    mission: raw.mission ?? missionId,
+    missionId,
+    trackId,
+    name,
+    description: raw.description ?? seed?.description ?? "",
+    why: raw.why ?? seed?.why ?? "",
+    evidence: normalizeMilestoneEvidence(raw.evidence, evidenceSummary, raw.unlockedAt),
+    evidenceSummary,
+    criteria: raw.criteria ?? seed?.criteria ?? [evidenceSummary],
+    unlockCriteria: raw.unlockCriteria ?? raw.criteria ?? seed?.unlockCriteria ?? [evidenceSummary],
+    nextStepIfConfirmed:
+      raw.nextStepIfConfirmed ??
+      seed?.nextStepIfConfirmed ??
+      "Confirm response before progressing.",
+    nextStepIfNotConfirmed:
+      raw.nextStepIfNotConfirmed ??
+      seed?.nextStepIfNotConfirmed ??
+      "Repeat the current dose and gather more evidence.",
+    progressionType: normalizeProgressionType(
+      raw.progressionType,
+      seed?.progressionType ?? "recovery",
+    ),
+    state,
+    status: state,
+    unlockedAt: raw.unlockedAt,
+    coachNotes: raw.coachNotes,
+    allowsImmediateUnlock: raw.allowsImmediateUnlock ?? seed?.allowsImmediateUnlock,
+  } satisfies Milestone;
+}
+
 function normalizeMorningCheckIn(
   entry: LegacyMorningCheckIn | undefined,
 ): MorningCheckIn | undefined {
@@ -1901,11 +2296,16 @@ function normalizeMorningCheckIn(
     swellingTrend: entry.swellingTrend ?? fallback.swellingTrend,
     swellingContext: entry.swellingContext ?? fallback.swellingContext,
     walkingConfidence: finiteNumber(entry.walkingConfidence, fallback.walkingConfidence),
+    gaitQuality:
+      entry.gaitQuality == null
+        ? fallback.gaitQuality
+        : finiteNumber(entry.gaitQuality, fallback.gaitQuality ?? 3),
     extensionStatus: normalizeExtensionStatus(
       entry.extensionStatus,
       entry.extensionEstimateDegrees ?? entry.extension,
     ),
     flexionStatus: normalizeFlexionStatus(entry.flexionStatus, entry.flexionComfort, entry.flexion),
+    flexionLimitingFactor: normalizeFlexionLimitingFactor(entry.flexionLimitingFactor),
     sleepHours: finiteNumber(entry.sleepHours, fallback.sleepHours),
     weightKg: finiteNumber(entry.weightKg, fallback.weightKg),
     proteinTargetG: finiteNumber(entry.proteinTargetG, fallback.proteinTargetG),
@@ -1954,12 +2354,17 @@ function normalizeEveningCheckIn(
       entry.walkingConfidenceAfter ?? entry.walkingConfidence,
       fallback.walkingConfidenceAfter ?? fallback.walkingConfidence,
     ),
+    gaitQualityAfter:
+      entry.gaitQualityAfter == null
+        ? (entry.movementQualityAfter ?? fallback.gaitQualityAfter)
+        : finiteNumber(entry.gaitQualityAfter, fallback.gaitQualityAfter ?? 3),
     quadActivationQuality: finiteNumber(
       entry.quadActivationQuality,
       fallback.quadActivationQuality,
     ),
     extensionResponse: normalizeRangeResponse(entry.extensionResponse),
     flexionResponse: normalizeRangeResponse(entry.flexionResponse),
+    flexionLimitingFactor: normalizeFlexionLimitingFactor(entry.flexionLimitingFactor),
     concerningSymptoms: entry.concerningSymptoms ?? "",
     movementQualityAfter:
       entry.movementQualityAfter == null ? undefined : finiteNumber(entry.movementQualityAfter, 3),
@@ -1967,6 +2372,7 @@ function normalizeEveningCheckIn(
     milestones: entry.milestones ?? "",
     todayWin: entry.todayWin,
     taskCompletions: normalizeTaskCompletionRecord(entry.taskCompletions) ?? {},
+    skillTestResults: normalizeSkillTestResultRecord(entry.skillTestResults) ?? {},
     notes: entry.notes ?? "",
   };
 }
@@ -1987,28 +2393,16 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
       : [activeMissionId],
   };
 
-  const milestones = (saved.milestones?.length ? saved.milestones : seedMilestones).map(
-    (milestone) => {
-      const seed = seedMilestones.find((item) => item.id === milestone.id);
-      const missionId = (milestone.missionId ??
-        milestone.mission ??
-        seed?.missionId ??
-        activeMissionId) as MissionId;
-      const mission = missions.find((item) => item.id === missionId);
-      const trackId = (milestone.trackId ??
-        seed?.trackId ??
-        mission?.trackIds[0] ??
-        "symptoms") as RecoveryTrackId;
-      return {
-        ...seed,
-        ...milestone,
-        mission: milestone.mission ?? missionId,
-        missionId,
-        trackId,
-        criteria: milestone.criteria ?? seed?.criteria ?? [milestone.evidence],
-      };
-    },
+  const milestoneSeedsById = new Map<string, unknown>(
+    seedMilestones.map((milestone) => [milestone.id, milestone]),
   );
+  (saved.milestones ?? []).forEach((milestone) => {
+    const id = normalizeMilestoneId(milestone.id);
+    if (id) milestoneSeedsById.set(id, { ...milestone, id });
+  });
+  const milestones: Milestone[] = [...milestoneSeedsById.values()]
+    .map((milestone) => normalizeMilestone(milestone, activeMissionId, missions))
+    .filter((milestone): milestone is Milestone => Boolean(milestone));
 
   const savedMorning = normalizeMorningCheckIn(saved.morning as LegacyMorningCheckIn | undefined);
   const savedEvening = normalizeEveningCheckIn(saved.evening ?? undefined);
@@ -2091,7 +2485,10 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
         missionIds: raw.missionIds ?? [],
         trackIds: raw.trackIds ?? [],
         readiness:
-          readiness === "ready" || readiness === "recover" || readiness === "modify"
+          readiness === "ready" ||
+          readiness === "recover" ||
+          readiness === "modify" ||
+          readiness === "modify_positive"
             ? readiness
             : "modify",
         readinessReason:
@@ -2138,11 +2535,17 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
               : [prescribedTaskFromQuest(questForFallback, index)],
           };
         }),
+        skillTests: normalizeSkillTests(raw.skillTests, localDate),
+        milestoneUpdates: normalizeMilestoneUpdates(raw.milestoneUpdates),
+        nextUnlocks: normalizeNextUnlocks(raw.nextUnlocks),
         notes: raw.notes ?? "",
         status: isSeedPlan ? "archived" : (raw.status ?? "active"),
       };
     },
   );
+  const skillTests = (saved.skillTests ?? initial.skillTests)
+    .map((test, index) => normalizeSkillTest(test, index, getLocalDateKey()))
+    .filter((test): test is SkillTest => Boolean(test));
   const recoveryIqEvents = (saved.recoveryIqEvents ?? [])
     .map(normalizeRecoveryIqEvent)
     .filter((event): event is RecoveryIqEvent => Boolean(event));
@@ -2182,6 +2585,7 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
     evening: savedEvening ?? initial.evening,
     checkIns,
     milestones,
+    skillTests,
     dailyCoachPlans,
     coachNotes: (saved.coachNotes ?? initial.coachNotes).map(normalizeCoachNote),
     athleteNotes: (saved.athleteNotes ?? initial.athleteNotes).map(normalizeAthleteNote),
@@ -2973,6 +3377,14 @@ function normalizeQuestForDate(
     status: done ? "complete" : quest.status === "skipped" ? "skipped" : "pending",
     category: quest.category ?? quest.kind,
     prescribedTasks,
+    questType: quest.questType ?? (quest.id.includes("check-in") ? "check_in" : "required_action"),
+    progressionType:
+      quest.progressionType ??
+      (dashboardObjectiveGroupForQuest(quest as DailyQuest) === "movement"
+        ? "walking"
+        : dashboardObjectiveGroupForQuest(quest as DailyQuest) === "recovery_support"
+          ? "recovery"
+          : "skill_control"),
   };
 }
 
@@ -3125,6 +3537,8 @@ function dashboardObjective(
         relatedQuestIds,
         objectiveGroup: group,
         prescribedTasks,
+        questType: "check_in",
+        progressionType: "recovery",
         phaseId: plan.phaseId,
         planId: fromActiveCoachPlan ? plan.id : undefined,
       };
@@ -3151,6 +3565,8 @@ function dashboardObjective(
         relatedQuestIds,
         objectiveGroup: group,
         prescribedTasks,
+        questType: "required_action",
+        progressionType: "walking",
         phaseId: plan.phaseId,
         planId: fromActiveCoachPlan ? plan.id : undefined,
       };
@@ -3180,6 +3596,8 @@ function dashboardObjective(
         relatedQuestIds,
         objectiveGroup: group,
         prescribedTasks,
+        questType: "required_action",
+        progressionType: "skill_control",
         phaseId: plan.phaseId,
         planId: fromActiveCoachPlan ? plan.id : undefined,
       };
@@ -3209,6 +3627,8 @@ function dashboardObjective(
         relatedQuestIds,
         objectiveGroup: group,
         prescribedTasks,
+        questType: "recovery_basic",
+        progressionType: "recovery",
         phaseId: plan.phaseId,
         planId: fromActiveCoachPlan ? plan.id : undefined,
       };
@@ -3239,6 +3659,8 @@ function dashboardObjective(
         relatedQuestIds,
         objectiveGroup: group,
         prescribedTasks,
+        questType: "check_in",
+        progressionType: "recovery",
         phaseId: plan.phaseId,
         planId: fromActiveCoachPlan ? plan.id : undefined,
       };
@@ -3321,6 +3743,9 @@ export function dailyCoachPlanForDate(
         prescribedTasks: normalized.prescribedTasks ?? [prescribedTaskFromQuest(normalized, index)],
       };
     }),
+    skillTests: [],
+    milestoneUpdates: [],
+    nextUnlocks: [],
     stopRules: ["Stop or modify if pain, swelling, or walking quality worsens."],
     eveningCheckInFocus: phase.eveningCheckInFields
       .filter((field) => field !== "notes" && field !== "exercises-completed")
@@ -3350,6 +3775,9 @@ export function activeDailyCoachPlanForDate(
     ...plan,
     date: isoDate,
     localDate: isoDate,
+    skillTests: (plan.skillTests ?? []).map(
+      (test, index) => normalizeSkillTest(test, index, isoDate) ?? test,
+    ),
     quests: plan.quests.map((quest, index) => {
       const normalized = normalizeQuestForDate(s, isoDate, quest);
       return {
@@ -3405,6 +3833,181 @@ function stringArray(value: unknown): string[] {
   }
   const single = stringValue(value);
   return single ? [single] : [];
+}
+
+function normalizeSkillTestStatus(value: unknown): SkillTestStatus {
+  return value === "available" ||
+    value === "attempted" ||
+    value === "passed_pending_confirmation" ||
+    value === "failed" ||
+    value === "deferred"
+    ? value
+    : "available";
+}
+
+function normalizeQuestType(value: unknown): QuestType {
+  return value === "required_action" ||
+    value === "optional_skill_test" ||
+    value === "recovery_basic" ||
+    value === "check_in" ||
+    value === "monitoring"
+    ? value
+    : "required_action";
+}
+
+function normalizeSkillTestResponseChange(
+  value: unknown,
+): NonNullable<SkillTestResult["swellingResponse"]> {
+  return value === "not_assessed" ||
+    value === "same" ||
+    value === "better" ||
+    value === "worse" ||
+    value === "unknown"
+    ? value
+    : "unknown";
+}
+
+function optionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function normalizeSkillTestResult(value: unknown): SkillTestResult {
+  if (!value || typeof value !== "object") {
+    return { completed: false };
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    attemptedAt: stringValue(record.attemptedAt) || undefined,
+    completed: typeof record.completed === "boolean" ? record.completed : false,
+    repsCompleted: finiteOptionalNumber(record.repsCompleted),
+    painDuring: finiteOptionalNumber(record.painDuring),
+    painAfter: finiteOptionalNumber(record.painAfter),
+    qualityScore: finiteOptionalNumber(record.qualityScore),
+    lagObserved: optionalBoolean(record.lagObserved),
+    feltControlled: optionalBoolean(record.feltControlled),
+    irritation: optionalBoolean(record.irritation),
+    swellingResponse: normalizeSkillTestResponseChange(record.swellingResponse),
+    walkingResponse: normalizeSkillTestResponseChange(record.walkingResponse),
+    notes: stringValue(record.notes) || undefined,
+  };
+}
+
+function normalizeSkillTestResultRecord(
+  value: unknown,
+): Record<string, SkillTestResult> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>).map(
+    ([testId, result]) => [testId, normalizeSkillTestResult(result)] as const,
+  );
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
+function normalizeSkillTestDose(value: unknown): SkillTestDose {
+  if (!value || typeof value !== "object") {
+    return {
+      instructions: "Perform only if today's readiness criteria are met.",
+    };
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    sets: finiteOptionalNumber(record.sets),
+    reps: finiteOptionalNumber(record.reps),
+    duration:
+      stringValue(record.duration) ||
+      (typeof record.duration === "number" && Number.isFinite(record.duration)
+        ? `${record.duration} min`
+        : undefined),
+    instructions:
+      stringValue(record.instructions) || "Perform only if today's readiness criteria are met.",
+  };
+}
+
+function normalizeSkillTest(value: unknown, index: number, fallbackDate: string): SkillTest | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const title = stringValue(record.title) || stringValue(record.name) || `Skill test ${index + 1}`;
+  const relatedMilestoneId = normalizeMilestoneId(record.relatedMilestoneId ?? record.milestoneId);
+  if (!relatedMilestoneId) return null;
+  const date = stringValue(record.localDate) || stringValue(record.date) || fallbackDate;
+  return {
+    id: stringValue(record.id) || `skill-test-${date}-${slugify(title)}`,
+    date,
+    localDate: date,
+    timestampUtc: stringValue(record.timestampUtc) || undefined,
+    relatedMilestoneId,
+    title,
+    description: stringValue(record.description) || title,
+    status: normalizeSkillTestStatus(record.status),
+    progressionType: normalizeProgressionType(record.progressionType, "skill_control"),
+    testDose: normalizeSkillTestDose(record.testDose),
+    passCriteria: stringArray(record.passCriteria),
+    stopRules: stringArray(record.stopRules),
+    responseRequired: {
+      eveningCheckInRequired:
+        !record.responseRequired ||
+        typeof record.responseRequired !== "object" ||
+        (record.responseRequired as Record<string, unknown>).eveningCheckInRequired !== false,
+      nextMorningCheckInRequired:
+        !record.responseRequired ||
+        typeof record.responseRequired !== "object" ||
+        (record.responseRequired as Record<string, unknown>).nextMorningCheckInRequired !== false,
+    },
+    result: normalizeSkillTestResult(record.result),
+  };
+}
+
+function normalizeSkillTests(value: unknown, fallbackDate: string): SkillTest[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => normalizeSkillTest(item, index, fallbackDate))
+    .filter((item): item is SkillTest => Boolean(item));
+}
+
+function normalizeMilestoneUpdate(value: unknown): DailyCoachPlanMilestoneUpdate | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const milestoneId = normalizeMilestoneId(record.milestoneId);
+  if (!milestoneId) return null;
+  return {
+    milestoneId,
+    state: normalizeMilestoneState(record.state),
+    summary: stringValue(record.summary) || "Milestone state updated from Daily Coach Plan.",
+    nextStepIfConfirmed: stringValue(record.nextStepIfConfirmed) || undefined,
+    nextStepIfNotConfirmed: stringValue(record.nextStepIfNotConfirmed) || undefined,
+    confidence: normalizeEvidenceConfidence(record.confidence),
+  };
+}
+
+function normalizeMilestoneUpdates(value: unknown): DailyCoachPlanMilestoneUpdate[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(normalizeMilestoneUpdate)
+    .filter((item): item is DailyCoachPlanMilestoneUpdate => Boolean(item));
+}
+
+function normalizeNextUnlock(value: unknown, index: number): DailyCoachPlanNextUnlock | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const milestoneId = normalizeMilestoneId(record.milestoneId);
+  const title = stringValue(record.title) || `Next unlock ${index + 1}`;
+  if (!milestoneId) return null;
+  return {
+    milestoneId,
+    title,
+    state: normalizeMilestoneState(record.state),
+    evidenceNeeded: stringArray(record.evidenceNeeded),
+    nextStepIfConfirmed:
+      stringValue(record.nextStepIfConfirmed) || "Confirm response before adding this skill.",
+    nextStepIfNotConfirmed:
+      stringValue(record.nextStepIfNotConfirmed) || "Keep this as possible but not doseable.",
+  };
+}
+
+function normalizeNextUnlocks(value: unknown): DailyCoachPlanNextUnlock[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(normalizeNextUnlock)
+    .filter((item): item is DailyCoachPlanNextUnlock => Boolean(item));
 }
 
 const PRESCRIBED_TASK_CATEGORIES: PrescribedTaskCategory[] = [
@@ -3750,7 +4353,10 @@ function normalizeDailyCoachPlanSource(value: unknown): DailyCoachPlanSource | n
 
 function normalizeDailyCoachPlanReadiness(value: unknown): DailyCoachPlan["readiness"] {
   const readiness = stringValue(value).toLowerCase();
-  return readiness === "ready" || readiness === "recover" || readiness === "modify"
+  return readiness === "ready" ||
+    readiness === "recover" ||
+    readiness === "modify" ||
+    readiness === "modify_positive"
     ? readiness
     : "modify";
 }
@@ -3814,6 +4420,8 @@ function normalizeImportedQuest(
       source: "daily-coach-plan",
       reason: "Imported from Daily Coach Plan",
       prescribedTasks: task ? [task] : undefined,
+      questType: "required_action",
+      progressionType: "skill_control",
       planId,
     };
   }
@@ -3862,6 +4470,9 @@ function normalizeImportedQuest(
     details: details.length ? details : undefined,
     objectiveGroup: objectiveGroupFromValue(record.objectiveGroup),
     prescribedTasks: tasks,
+    questType: normalizeQuestType(record.questType),
+    progressionType: normalizeProgressionType(record.progressionType, "skill_control"),
+    relatedMilestoneId: normalizeMilestoneId(record.relatedMilestoneId) || undefined,
     phaseId: PHASE_CONFIGS.some((phase) => phase.id === record.phaseId)
       ? (record.phaseId as PhaseId)
       : undefined,
@@ -3915,6 +4526,9 @@ export function parseDailyCoachPlanJson(
     .map((quest, index) => normalizeImportedQuest(quest, index, planDate, id))
     .filter((quest): quest is DailyQuest => Boolean(quest));
   const stopRules = stringArray(stopRulesInput);
+  const skillTests = normalizeSkillTests(input.skillTests, planDate);
+  const milestoneUpdates = normalizeMilestoneUpdates(input.milestoneUpdates);
+  const nextUnlocks = normalizeNextUnlocks(input.nextUnlocks);
 
   if (quests.length === 0) errors.push("quests array must contain at least one quest.");
   if (stopRules.length === 0) errors.push("stopRules array must contain at least one stop rule.");
@@ -3925,6 +4539,11 @@ export function parseDailyCoachPlanJson(
   const activePhase = PHASE_CONFIGS.some((phase) => phase.id === input.phaseId)
     ? (input.phaseId as PhaseId)
     : "activation-early-rom";
+  const readiness = normalizeDailyCoachPlanReadiness(input.readiness);
+  if (readiness === "modify_positive" && quests.some((quest) => quest.progressionType === "load")) {
+    errors.push("modify_positive cannot include load progression quests.");
+  }
+  if (errors.length > 0) return { ok: false, errors };
 
   return {
     ok: true,
@@ -3949,7 +4568,7 @@ export function parseDailyCoachPlanJson(
             RECOVERY_TRACKS.some((known) => known.id === track),
           )
         : [],
-      readiness: normalizeDailyCoachPlanReadiness(input.readiness),
+      readiness,
       readinessReason: stringValue(input.readinessReason) || undefined,
       primaryFocus,
       focus: primaryFocus,
@@ -3963,12 +4582,50 @@ export function parseDailyCoachPlanJson(
           : "Medium",
       targets: normalizePlanTargets(input.targets),
       quests,
+      skillTests,
+      milestoneUpdates,
+      nextUnlocks,
       stopRules,
       eveningCheckInFocus: stringArray(input.eveningCheckInFocus),
       notes: stringValue(input.notes),
       status: "draft",
     },
   };
+}
+
+function applyDailyCoachPlanMilestoneUpdates(
+  milestones: Milestone[],
+  updates: DailyCoachPlanMilestoneUpdate[],
+  localDate: string,
+): Milestone[] {
+  if (updates.length === 0) return milestones;
+  return milestones.map((milestone) => {
+    const update = updates.find((item) => item.milestoneId === milestone.id);
+    if (!update) return milestone;
+    const state =
+      update.state === "unlocked" && !milestone.allowsImmediateUnlock
+        ? "test_passed_pending_confirmation"
+        : update.state;
+    const evidence = [
+      ...milestone.evidence,
+      {
+        date: localDate,
+        type: "coach_plan" as MilestoneEvidenceType,
+        summary: update.summary,
+        confidence: update.confidence ?? "medium",
+      },
+    ];
+    return {
+      ...milestone,
+      state,
+      status: state,
+      evidence,
+      evidenceSummary: update.summary,
+      nextStepIfConfirmed: update.nextStepIfConfirmed ?? milestone.nextStepIfConfirmed,
+      nextStepIfNotConfirmed: update.nextStepIfNotConfirmed ?? milestone.nextStepIfNotConfirmed,
+      unlockedAt: state === "unlocked" ? (milestone.unlockedAt ?? localDate) : milestone.unlockedAt,
+    };
+  });
 }
 
 export function activateDailyCoachPlan(plan: DailyCoachPlan) {
@@ -4029,9 +4686,20 @@ export function activateDailyCoachPlan(plan: DailyCoachPlan) {
       localDate,
       timestampUtc,
       quests,
+      skillTests: (plan.skillTests ?? []).map((test, index) => ({
+        ...(normalizeSkillTest(test, index, localDate) ?? test),
+        date: localDate,
+        localDate,
+      })),
+      milestoneUpdates: plan.milestoneUpdates ?? [],
+      nextUnlocks: plan.nextUnlocks ?? [],
       importedAt,
       status: "active",
     };
+    const skillTests = [
+      ...(prev.skillTests ?? []).filter((test) => dailyRecordDate(test) !== localDate),
+      ...activatedPlan.skillTests,
+    ];
 
     return {
       ...prev,
@@ -4043,6 +4711,12 @@ export function activateDailyCoachPlan(plan: DailyCoachPlan) {
         ),
         activatedPlan,
       ],
+      skillTests,
+      milestones: applyDailyCoachPlanMilestoneUpdates(
+        prev.milestones,
+        activatedPlan.milestoneUpdates,
+        localDate,
+      ),
       questCompletions: nextQuestCompletions,
       prescribedTaskCompletions: nextTaskCompletions,
       todayQuests: localDate === getLocalDateKey() ? quests : prev.todayQuests,
@@ -4125,6 +4799,273 @@ export function updatePrescribedTaskCompletion(
       todayQuests: isoDate === getLocalDateKey() ? updatedQuests : prev.todayQuests,
     };
   });
+}
+
+function skillTestDoseForSlr(): SkillTestDose {
+  return {
+    sets: 1,
+    reps: 3,
+    instructions:
+      "Small test dose only. Lock the knee first, lift only if control is clean, and stop at the first sign of lag, guarding, pain, or irritation.",
+  };
+}
+
+function skillTestCriteriaMetForSlr(
+  morning: MorningCheckIn | null,
+  previousResponse: EveningCheckIn | null,
+): boolean {
+  if (!morning) return false;
+  const swellingTrend = morning.swellingTrend ?? "unknown";
+  const gaitQuality =
+    morning.gaitQuality ??
+    previousResponse?.gaitQualityAfter ??
+    previousResponse?.movementQualityAfter ??
+    3;
+  return (
+    morning.pain <= 3 &&
+    (morning.swellingLevel ?? morning.swelling) <= 6 &&
+    swellingTrend !== "worse" &&
+    morning.walkingConfidence >= 3 &&
+    gaitQuality >= 3 &&
+    morning.extensionStatus === "reaches_neutral" &&
+    (previousResponse?.quadActivationQuality ?? 3) >= 3 &&
+    !hasConcerningNotes(morning.notes)
+  );
+}
+
+function defaultSkillTestForMilestone(
+  milestone: Milestone,
+  isoDate: string,
+  morning: MorningCheckIn | null,
+  previousResponse: EveningCheckIn | null,
+): SkillTest | null {
+  if (milestone.id !== "straight_leg_raise_no_lag") return null;
+  const criteriaMet = skillTestCriteriaMetForSlr(morning, previousResponse);
+  return {
+    id: `skill-test-${isoDate}-straight-leg-raise-no-lag`,
+    date: isoDate,
+    localDate: isoDate,
+    relatedMilestoneId: milestone.id,
+    title: "Straight leg raise test dose",
+    description:
+      "Optional skill-control check. A successful immediate test still needs evening and next-morning confirmation.",
+    status: criteriaMet ? "available" : "deferred",
+    progressionType: "skill_control",
+    testDose: skillTestDoseForSlr(),
+    passCriteria: [
+      "No lag",
+      "Controlled lift",
+      "No pain spike",
+      "No incision or joint irritation",
+      "No worse walking afterward",
+    ],
+    stopRules: [
+      "Stop if lag appears.",
+      "Stop if pain rises above 3/10.",
+      "Stop if guarding, pinching, irritation, or worse gait appears.",
+    ],
+    responseRequired: {
+      eveningCheckInRequired: true,
+      nextMorningCheckInRequired: true,
+    },
+    result: { completed: false, swellingResponse: "unknown", walkingResponse: "unknown" },
+  };
+}
+
+function mergeSkillTestResult(test: SkillTest, result: SkillTestResult | undefined): SkillTest {
+  return result
+    ? {
+        ...test,
+        result,
+        status: result.attemptedAt
+          ? skillTestStatusFromResult(result)
+          : normalizeSkillTestStatus(test.status),
+      }
+    : test;
+}
+
+export function skillTestsForDate(s: PhoenixState, isoDate = getLocalDateKey()): SkillTest[] {
+  const activePlan = activeDailyCoachPlanForDate(s, isoDate);
+  const morning = getMorningForDate(s, isoDate);
+  const previousResponse = previousEvening(s, isoDate);
+  const storedForDate = (s.skillTests ?? []).filter((test) => dailyRecordDate(test) === isoDate);
+  const generated = s.milestones
+    .filter(
+      (milestone) =>
+        milestone.state === "testable" || milestone.state === "test_passed_pending_confirmation",
+    )
+    .map((milestone) => defaultSkillTestForMilestone(milestone, isoDate, morning, previousResponse))
+    .filter((test): test is SkillTest => Boolean(test));
+  const byId = new Map<string, SkillTest>();
+  [...generated, ...(activePlan?.skillTests ?? []), ...storedForDate].forEach((test) => {
+    const normalized = normalizeSkillTest(test, byId.size, isoDate) ?? test;
+    byId.set(normalized.id, normalized);
+  });
+  const eveningResults = getEveningForDate(s, isoDate)?.skillTestResults ?? {};
+  return [...byId.values()].map((test) => mergeSkillTestResult(test, eveningResults[test.id]));
+}
+
+function resultSuggestsFailedSkillTest(result: SkillTestResult): boolean {
+  return (
+    result.lagObserved === true ||
+    result.irritation === true ||
+    (result.painDuring ?? 0) > 3 ||
+    (result.painAfter ?? 0) > 3 ||
+    (result.qualityScore != null && result.qualityScore < 3) ||
+    result.swellingResponse === "worse" ||
+    result.walkingResponse === "worse"
+  );
+}
+
+function skillTestStatusFromResult(result: SkillTestResult): SkillTestStatus {
+  if (!result.attemptedAt) return "available";
+  if (!result.completed) return "attempted";
+  return resultSuggestsFailedSkillTest(result) ? "failed" : "passed_pending_confirmation";
+}
+
+export function updateSkillTestResult(
+  isoDate: string,
+  testId: string,
+  patch: Partial<SkillTestResult>,
+) {
+  setState((prev) => {
+    const now = getUtcTimestamp();
+    const existing = skillTestsForDate(prev, isoDate).find((test) => test.id === testId);
+    if (!existing) return prev;
+    const result = normalizeSkillTestResult({
+      ...existing.result,
+      ...patch,
+      attemptedAt: patch.attemptedAt ?? existing.result.attemptedAt ?? now,
+      completed: patch.completed ?? existing.result.completed,
+    });
+    const status = skillTestStatusFromResult(result);
+    const updatedTest = { ...existing, status, result, timestampUtc: now };
+    const skillTests = [
+      ...(prev.skillTests ?? []).filter(
+        (test) => !(dailyRecordDate(test) === isoDate && test.id === testId),
+      ),
+      updatedTest,
+    ];
+    const dailyCoachPlans = prev.dailyCoachPlans.map((plan) =>
+      dailyRecordDate(plan) === isoDate
+        ? {
+            ...plan,
+            skillTests: (plan.skillTests ?? []).map((test) =>
+              test.id === testId ? updatedTest : test,
+            ),
+          }
+        : plan,
+    );
+    const milestones = prev.milestones.map((milestone) => {
+      if (milestone.id !== updatedTest.relatedMilestoneId) return milestone;
+      const nextState: MilestoneState =
+        status === "passed_pending_confirmation"
+          ? "test_passed_pending_confirmation"
+          : status === "failed"
+            ? "paused"
+            : milestone.state;
+      const evidenceSummary =
+        status === "passed_pending_confirmation"
+          ? `${updatedTest.title} completed successfully; pending evening and next-morning response.`
+          : status === "failed"
+            ? `${updatedTest.title} did not meet criteria; keep the milestone paused.`
+            : `${updatedTest.title} attempted; response still needs confirmation.`;
+      const hasEvidenceForTest = milestone.evidence.some(
+        (item) =>
+          item.date === isoDate &&
+          item.type === "skill_test" &&
+          item.summary.includes(updatedTest.title),
+      );
+      const shouldAppendEvidence = status !== existing.status || !hasEvidenceForTest;
+      const nextEvidence: MilestoneEvidence[] = shouldAppendEvidence
+        ? [
+            ...milestone.evidence,
+            {
+              date: isoDate,
+              type: "skill_test",
+              summary: evidenceSummary,
+              confidence: status === "passed_pending_confirmation" ? "medium" : "low",
+            },
+          ]
+        : milestone.evidence;
+      return {
+        ...milestone,
+        state: nextState,
+        status: nextState,
+        evidenceSummary,
+        evidence: nextEvidence,
+      };
+    });
+    return {
+      ...prev,
+      skillTests,
+      dailyCoachPlans,
+      milestones,
+    };
+  });
+}
+
+export interface MilestoneWatchItem {
+  id: string;
+  title: string;
+  state: MilestoneState;
+  statusLabel: string;
+  evidence: string[];
+  unlockCriteria: string[];
+  nextStepIfConfirmed: string;
+  nextStepIfNotConfirmed: string;
+  progressionType: ProgressionType;
+  skillTest?: SkillTest;
+}
+
+function milestoneStatusLabel(state: MilestoneState): string {
+  if (state === "test_passed_pending_confirmation") return "Test passed - pending confirmation";
+  if (state === "testable") return "Testable";
+  if (state === "paused") return "Paused";
+  if (state === "unlocked") return "Unlocked";
+  return "Locked";
+}
+
+export function milestoneWatchForDate(
+  s: PhoenixState,
+  isoDate = getLocalDateKey(),
+): MilestoneWatchItem[] {
+  const activePlan = activeDailyCoachPlanForDate(s, isoDate);
+  const tests = skillTestsForDate(s, isoDate);
+  const planUnlocks = new Map(
+    (activePlan?.nextUnlocks ?? []).map((unlock) => [unlock.milestoneId, unlock]),
+  );
+  return s.milestones
+    .filter((milestone) => milestone.state !== "unlocked")
+    .sort((a, b) => {
+      const order: Record<MilestoneState, number> = {
+        test_passed_pending_confirmation: 0,
+        testable: 1,
+        paused: 2,
+        locked: 3,
+        unlocked: 4,
+      };
+      return order[a.state] - order[b.state];
+    })
+    .slice(0, 3)
+    .map((milestone) => {
+      const planUnlock = planUnlocks.get(milestone.id);
+      return {
+        id: milestone.id,
+        title: planUnlock?.title ?? milestone.title ?? milestone.name,
+        state: planUnlock?.state ?? milestone.state,
+        statusLabel: milestoneStatusLabel(planUnlock?.state ?? milestone.state),
+        evidence: milestone.evidence.slice(-3).map((item) => item.summary),
+        unlockCriteria: planUnlock?.evidenceNeeded.length
+          ? planUnlock.evidenceNeeded
+          : milestone.unlockCriteria,
+        nextStepIfConfirmed: planUnlock?.nextStepIfConfirmed ?? milestone.nextStepIfConfirmed,
+        nextStepIfNotConfirmed:
+          planUnlock?.nextStepIfNotConfirmed ?? milestone.nextStepIfNotConfirmed,
+        progressionType: milestone.progressionType,
+        skillTest: tests.find((test) => test.relatedMilestoneId === milestone.id),
+      };
+    });
 }
 
 export type Trend = "up" | "down" | "flat" | "none";
@@ -4221,12 +5162,14 @@ export function saveEveningCheckIn(entry: EveningCheckIn) {
     const localDate = entry.localDate || entry.date;
     const timestampUtc = entry.timestampUtc || getUtcTimestamp();
     const taskCompletions = normalizeTaskCompletionRecord(entry.taskCompletions) ?? {};
+    const skillTestResults = normalizeSkillTestResultRecord(entry.skillTestResults) ?? {};
     const savedEntry = {
       ...entry,
       date: localDate,
       localDate,
       timestampUtc,
       taskCompletions,
+      skillTestResults,
       phaseId,
     };
     const prescribedTaskCompletions = {
@@ -4236,6 +5179,12 @@ export function saveEveningCheckIn(entry: EveningCheckIn) {
         ...taskCompletions,
       },
     };
+    const skillTests = (prev.skillTests ?? []).map((test) => {
+      const result = skillTestResults[test.id];
+      return result && dailyRecordDate(test) === localDate
+        ? { ...test, result, status: skillTestStatusFromResult(result) }
+        : test;
+    });
     return {
       ...prev,
       evening: localDate === getLocalDateKey() ? savedEntry : prev.evening,
@@ -4252,6 +5201,7 @@ export function saveEveningCheckIn(entry: EveningCheckIn) {
         evening: upsertByDate(prev.history.evening, savedEntry),
       },
       prescribedTaskCompletions,
+      skillTests,
       recoveryIqEvents: upsertRecoveryIqEvent(
         prev.recoveryIqEvents,
         createRecoveryIqEvent({
@@ -4282,7 +5232,7 @@ export function trendFor(
 }
 
 export type Readiness = {
-  state: "ready" | "modify" | "recover";
+  state: "ready" | "modify" | "modify_positive" | "recover";
   label: string;
   dot: string; // emoji
   summary: string;
@@ -4357,6 +5307,9 @@ function swellingPairedWithNegativeSignals(
     : 0;
   const movementQualityLow =
     (current.movementQuality != null && current.movementQuality <= 2) ||
+    (current.gaitQuality != null && current.gaitQuality <= 2) ||
+    (previousEveningEntry?.gaitQualityAfter != null &&
+      previousEveningEntry.gaitQualityAfter <= 2) ||
     (previousEveningEntry?.movementQualityAfter != null &&
       previousEveningEntry.movementQualityAfter <= 2);
   const previousEveningNegative =
@@ -4374,6 +5327,27 @@ function swellingPairedWithNegativeSignals(
     previousEveningNegative ||
     movementQualityLow ||
     hasConcerningNotes(current.notes)
+  );
+}
+
+function hasPositiveSkillControlSignal(
+  current: MorningCheckIn,
+  swellingTrend: SwellingTrend,
+  previousEveningEntry: EveningCheckIn | null,
+): boolean {
+  const gaitQuality =
+    current.gaitQuality ??
+    previousEveningEntry?.gaitQualityAfter ??
+    previousEveningEntry?.movementQualityAfter ??
+    3;
+  return (
+    current.pain <= 3 &&
+    current.walkingConfidence >= 3 &&
+    gaitQuality >= 3 &&
+    swellingTrend !== "worse" &&
+    current.extensionStatus === "reaches_neutral" &&
+    (previousEveningEntry?.quadActivationQuality ?? 3) >= 3 &&
+    !hasConcerningNotes(current.notes)
   );
 }
 
@@ -4454,6 +5428,19 @@ export function readinessFor(m: MorningCheckIn | null, context: ReadinessContext
       summary:
         "Reactive swelling response. Reduce workload and prioritize symptom control, easy movement, and reassessment.",
     };
+
+  if (
+    hasPositiveSkillControlSignal(m, swellingTrend, previousEveningEntry) &&
+    (earlyPostOp || m.pain > 2 || swellingLevel >= 2)
+  ) {
+    return {
+      state: "modify_positive",
+      label: "Modify+",
+      dot: "🟡",
+      summary:
+        "Stay conservative, but positive control signals may support a small skill/control test or confirmation. Do not progress load.",
+    };
+  }
 
   if (m.pain > 3 || swellingLevel >= 3 || m.walkingConfidence <= 2)
     return {
@@ -4546,7 +5533,7 @@ export function currentPhaseN(s: PhoenixState): number {
 export function missionMilestoneProgress(s: PhoenixState, missionId: MissionId) {
   const list = s.milestones.filter((m) => m.mission === missionId);
   const total = Math.max(list.length, 1);
-  const done = list.filter((m) => m.status === "unlocked").length;
+  const done = list.filter((m) => m.state === "unlocked").length;
   return { done, total, pct: Math.round((done / total) * 100) };
 }
 
