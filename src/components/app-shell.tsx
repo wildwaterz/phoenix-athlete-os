@@ -28,7 +28,7 @@ const NAV: NavEntry[] = [
   { to: "/missions", label: "Missions", icon: Target },
   { to: "/milestones", label: "Milestones", icon: Trophy },
   { to: "/recovery-iq", label: "Recovery IQ", icon: Brain },
-  { to: "/journal", label: "Coach Journal", icon: BookOpen },
+  { to: "/journal", label: "Journal", icon: BookOpen },
   { to: "/glossary", label: "Glossary", icon: Library },
   { to: "/principles", label: "Principles", icon: Compass },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
@@ -199,16 +199,8 @@ export function PageHeader({
   );
 }
 
-export function Surface({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("surface-card rounded-2xl p-5", className)}>{children}</div>
-  );
+export function Surface({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("surface-card rounded-2xl p-5", className)}>{children}</div>;
 }
 
 export function StatTile({
@@ -241,13 +233,7 @@ export function StatTile({
   );
 }
 
-export function ProgressBar({
-  value,
-  className,
-}: {
-  value: number;
-  className?: string;
-}) {
+export function ProgressBar({ value, className }: { value: number; className?: string }) {
   const pct = Math.max(0, Math.min(100, value));
   return (
     <div className={cn("h-2 w-full overflow-hidden rounded-full bg-muted", className)}>

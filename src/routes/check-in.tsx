@@ -14,7 +14,9 @@ import {
   todayIso,
   type CheckInFieldId,
   type EveningCheckIn,
+  type FlexionStatus,
   type MorningCheckIn,
+  type RangeResponse,
   usePhoenix,
 } from "@/lib/phoenix-data";
 import { Fragment, useState } from "react";
@@ -44,9 +46,9 @@ function Field({
 }) {
   return (
     <label className="block">
-      <div className="mb-1.5 flex items-baseline justify-between">
+      <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-sm font-medium">{label}</span>
-        {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
+        {hint && <span className="text-right text-[11px] text-muted-foreground">{hint}</span>}
       </div>
       {children}
     </label>
@@ -138,12 +140,35 @@ const swellingTrendOptions: Array<NonNullable<MorningCheckIn["swellingTrend"]>> 
 ];
 
 const extensionStatusOptions: Array<NonNullable<MorningCheckIn["extensionStatus"]>> = [
-  "neutral",
+  "not_tested",
+  "reaches_neutral",
   "slightly_limited",
   "moderately_limited",
   "significantly_limited",
-  "not_tested",
 ];
+
+const flexionStatusOptions: FlexionStatus[] = [
+  "not_tested",
+  "comfortable_gentle_bend",
+  "stiff_but_tolerable",
+  "painful_or_pinching",
+];
+
+const responseOptions: RangeResponse[] = [
+  "not_tested",
+  "felt_same",
+  "felt_better",
+  "felt_stiffer",
+  "painful_or_pinching",
+];
+
+const quadActivationQualityLabels: Record<number, string> = {
+  1: "Could not find quad",
+  2: "Faint or inconsistent contraction",
+  3: "Repeatable but weak contraction",
+  4: "Strong repeatable contraction",
+  5: "Near-normal for current phase",
+};
 
 function formatOption(value: string) {
   return value
@@ -257,31 +282,14 @@ function renderMorningField(
           />
         </FieldSlot>
       );
-    case "quad-activation":
-      return (
-        <FieldSlot field={field} hint="1 — 5">
-          <Slider
-            value={m.quadActivation}
-            onChange={(v) => updateMorning({ quadActivation: v })}
-            min={1}
-            max={5}
-          />
-        </FieldSlot>
-      );
-    case "extension":
-      return (
-        <FieldSlot field={field} label="Extension (° from neutral)">
-          <NumberInput
-            value={m.extension}
-            onChange={(ev) => updateMorning({ extension: Number(ev.target.value) })}
-          />
-        </FieldSlot>
-      );
     case "extension-status":
       return (
-        <FieldSlot field={field}>
+        <FieldSlot
+          field={field}
+          hint="Do not force. Choose based on relaxed position, not a hard stretch."
+        >
           <SelectInput
-            value={m.extensionStatus ?? "not_tested"}
+            value={m.extensionStatus}
             onChange={(ev) =>
               updateMorning({
                 extensionStatus: ev.target.value as NonNullable<MorningCheckIn["extensionStatus"]>,
@@ -296,13 +304,19 @@ function renderMorningField(
           </SelectInput>
         </FieldSlot>
       );
-    case "flexion":
+    case "flexion-status":
       return (
-        <FieldSlot field={field} label="Flexion (°)">
-          <NumberInput
-            value={m.flexion}
-            onChange={(ev) => updateMorning({ flexion: Number(ev.target.value) })}
-          />
+        <FieldSlot field={field} label="Flexion comfort/status">
+          <SelectInput
+            value={m.flexionStatus}
+            onChange={(ev) => updateMorning({ flexionStatus: ev.target.value as FlexionStatus })}
+          >
+            {flexionStatusOptions.map((option) => (
+              <option key={option} value={option}>
+                {formatOption(option)}
+              </option>
+            ))}
+          </SelectInput>
         </FieldSlot>
       );
     case "movement-quality":
@@ -384,7 +398,7 @@ function renderEveningField(
           <TextArea
             value={e.exercisesCompleted}
             onChange={(ev) => updateEvening({ exercisesCompleted: ev.target.value })}
-            placeholder="What you actually did — sets, reps, load."
+            placeholder="Which quests you completed and what you actually did."
           />
         </FieldSlot>
       );
@@ -432,6 +446,49 @@ function renderEveningField(
           />
         </FieldSlot>
       );
+    case "quad-activation-quality":
+      return (
+        <FieldSlot field={field} hint={quadActivationQualityLabels[e.quadActivationQuality]}>
+          <Slider
+            value={e.quadActivationQuality}
+            onChange={(v) => updateEvening({ quadActivationQuality: v })}
+            min={1}
+            max={5}
+          />
+        </FieldSlot>
+      );
+    case "extension-response":
+      return (
+        <FieldSlot field={field}>
+          <SelectInput
+            value={e.extensionResponse}
+            onChange={(ev) =>
+              updateEvening({ extensionResponse: ev.target.value as RangeResponse })
+            }
+          >
+            {responseOptions.map((option) => (
+              <option key={option} value={option}>
+                {formatOption(option)}
+              </option>
+            ))}
+          </SelectInput>
+        </FieldSlot>
+      );
+    case "flexion-response":
+      return (
+        <FieldSlot field={field}>
+          <SelectInput
+            value={e.flexionResponse}
+            onChange={(ev) => updateEvening({ flexionResponse: ev.target.value as RangeResponse })}
+          >
+            {responseOptions.map((option) => (
+              <option key={option} value={option}>
+                {formatOption(option)}
+              </option>
+            ))}
+          </SelectInput>
+        </FieldSlot>
+      );
     case "movement-quality":
       return (
         <FieldSlot field={field} label="Movement quality after" hint="1 — 5">
@@ -461,6 +518,16 @@ function renderEveningField(
             value={e.milestones}
             onChange={(ev) => updateEvening({ milestones: ev.target.value })}
             placeholder="Anything earned today — first SLR without lag, etc."
+          />
+        </FieldSlot>
+      );
+    case "concerning-symptoms":
+      return (
+        <FieldSlot field={field} wide>
+          <TextArea
+            value={e.concerningSymptoms}
+            onChange={(ev) => updateEvening({ concerningSymptoms: ev.target.value })}
+            placeholder="Sharp pain, instability, buckling, calf symptoms, fever, drainage, or anything that concerns you."
           />
         </FieldSlot>
       );

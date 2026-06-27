@@ -6,6 +6,7 @@ import { buildPacketMarkdown, type PacketKind } from "@/lib/coach-packet";
 import {
   activeDailyCoachPlanForDate,
   archiveDailyCoachPlan,
+  createRecoveryIqEvent,
   currentMission,
   currentPhaseN,
   dailyQuestsForDate,
@@ -18,15 +19,18 @@ import {
   daysPostOp,
   getMorningForDate,
   latestCoachNoteForDateAndPhase,
-  levelFromXp,
   METRIC_DEFINITIONS,
   missionMilestoneProgress,
   phaseForDate,
   previousMorning,
   readinessForDate,
+  recoveryIqForState,
+  recoveryIqXpForState,
+  removeRecoveryIqEvent,
   setState,
   todaysWinForDate,
   trendFor,
+  upsertRecoveryIqEvent,
   type MetricId,
   usePhoenix,
 } from "@/lib/phoenix-data";
@@ -70,7 +74,8 @@ export const Route = createFileRoute("/")({
 function Dashboard() {
   const s = usePhoenix();
   const mission = currentMission(s);
-  const iq = levelFromXp(s.recoveryIqXp);
+  const iq = recoveryIqForState(s);
+  const recoveryIqXp = recoveryIqXpForState(s);
   const milestoneProg = missionMilestoneProgress(s, mission.id);
   const phaseN = currentPhaseN(s);
 
@@ -140,7 +145,32 @@ function Dashboard() {
           selectedDate === todayIso
             ? dateQuests.map((quest) => (quest.id === id ? { ...quest, done } : quest))
             : prev.todayQuests,
-        recoveryIqXp: prev.recoveryIqXp + (done ? q.xp : -q.xp),
+        recoveryIqEvents: done
+          ? upsertRecoveryIqEvent(
+              prev.recoveryIqEvents,
+              createRecoveryIqEvent({
+                date: selectedDate,
+                sourceType:
+                  q.id === "morning-check-in" || q.id === "evening-check-in" ? "check_in" : "quest",
+                sourceId:
+                  q.id === "morning-check-in" || q.id === "evening-check-in"
+                    ? `${q.id}:${selectedDate}`
+                    : `quest:${selectedDate}:${id}`,
+                title:
+                  q.id === "morning-check-in" || q.id === "evening-check-in"
+                    ? `${q.label} completed`
+                    : "Quest completed",
+                description: q.label,
+                xpAmount: q.xp,
+              }),
+            )
+          : removeRecoveryIqEvent(
+              prev.recoveryIqEvents,
+              q.id === "morning-check-in" || q.id === "evening-check-in" ? "check_in" : "quest",
+              q.id === "morning-check-in" || q.id === "evening-check-in"
+                ? `${q.id}:${selectedDate}`
+                : `quest:${selectedDate}:${id}`,
+            ),
       };
     });
 
@@ -191,7 +221,7 @@ function Dashboard() {
             <div className="mt-2">
               <ProgressBar value={iq.pct} />
               <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>{s.recoveryIqXp} XP</span>
+                <span>{recoveryIqXp} XP</span>
                 <span>{iq.toNext} to next</span>
               </div>
             </div>
@@ -213,7 +243,7 @@ function Dashboard() {
             <Flame className="h-3 w-3 text-phoenix" /> Recovery IQ
           </span>
           <span className="text-foreground">
-            Lvl {iq.level} · {s.recoveryIqXp} XP
+            Lvl {iq.level} · {recoveryIqXp} XP
           </span>
         </div>
         <div className="mt-2">
@@ -500,7 +530,7 @@ function metricTone(
   if (metricId === "walking-confidence" || metricId === "movement-quality")
     return value >= 4 ? "good" : value >= 3 ? "watch" : "alert";
   if (
-    metricId === "quad-activation" ||
+    metricId === "quad-activation-quality" ||
     metricId === "training-readiness" ||
     metricId === "sport-confidence"
   )
@@ -569,26 +599,23 @@ function DashboardMetricTile({
           tone={metricTone(metricId, morning?.movementQuality)}
         />
       );
-    case "quad-activation":
+    case "quad-activation-quality":
       return (
-        <MetricTile
+        <StatTile
           label={metric.label}
-          value={morning ? `${morning.quadActivation}/5` : "—"}
-          current={morning?.quadActivation}
-          previous={previousMorning?.quadActivation}
-          direction="higher-better"
-          tone={metricTone(metricId, morning?.quadActivation)}
+          value={
+            evening?.quadActivationQuality != null ? `${evening.quadActivationQuality}/5` : "—"
+          }
+          hint="Evening response"
+          tone={metricTone(metricId, evening?.quadActivationQuality)}
         />
       );
-    case "flexion":
+    case "flexion-status":
       return (
-        <MetricTile
+        <StatTile
           label={metric.label}
-          value={morning ? `${morning.flexion}°` : "—"}
-          current={morning?.flexion}
-          previous={previousMorning?.flexion}
-          direction="higher-better"
-          unit="°"
+          value={morning?.flexionStatus ? formatMetricValue(morning.flexionStatus) : "—"}
+          hint="Morning baseline"
         />
       );
     case "sleep-hours":
@@ -640,7 +667,7 @@ function DashboardMetricTile({
         <StatTile
           label={metric.label}
           value={morning?.extensionStatus ? formatMetricValue(morning.extensionStatus) : "—"}
-          hint={morning ? `${morning.extension}° from neutral` : "No check-in"}
+          hint="Morning baseline"
         />
       );
     case "protein-target":
@@ -694,8 +721,20 @@ function QuestRow({ q, onToggle }: { q: DailyQuest; onToggle: () => void }) {
         ) : (
           <Circle className="h-5 w-5 text-muted-foreground" />
         )}
-        <span className={cn("flex-1 text-sm", q.done && "line-through text-muted-foreground")}>
-          {q.label}
+        <span className="min-w-0 flex-1">
+          <span className={cn("block text-sm", q.done && "line-through text-muted-foreground")}>
+            {q.label}
+          </span>
+          {q.sourceLabel && (
+            <span className="mt-1 block text-[11px] font-medium uppercase tracking-[0.14em] text-phoenix">
+              {q.sourceLabel}
+            </span>
+          )}
+          {q.details && q.details.length > 0 && (
+            <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+              {q.details.join(" · ")}
+            </span>
+          )}
         </span>
         <span
           className={cn(
@@ -830,10 +869,12 @@ function CoachPlanCard({
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {coachNote.source}
-            {coachNote.author ? ` · ${coachNote.author}` : ""} ·{" "}
+            {coachNote.authorName ? ` · ${coachNote.authorName}` : ""} ·{" "}
             {formatImportedTime(coachNote.createdAt)}
           </div>
-          <p className="mt-2 line-clamp-4 text-sm leading-relaxed">{coachNote.body}</p>
+          <p className="mt-2 line-clamp-4 text-sm leading-relaxed">
+            {coachNote.summary || coachNote.fullNote}
+          </p>
         </div>
       )}
     </div>

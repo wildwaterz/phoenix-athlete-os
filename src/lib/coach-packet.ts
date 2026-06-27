@@ -11,11 +11,12 @@ import {
   daysPostOp,
   getEveningForDate,
   getMorningForDate,
-  levelFromXp,
   previousEvening,
   previousMorning,
   phaseForDate,
   readinessForDate,
+  recoveryIqForState,
+  recoveryIqXpForState,
   smallWinForDate,
   todayIso,
 } from "./phoenix-data";
@@ -32,13 +33,15 @@ export function buildPacketJson(
   const mission = currentMission(s);
   const missions = activeMissions(s);
   const activeTracks = activeRecoveryTracksForPhase(s, phase);
-  const { level } = levelFromXp(s.recoveryIqXp);
+  const { level } = recoveryIqForState(s);
+  const recoveryIqXp = recoveryIqXpForState(s);
   const morning = getMorningForDate(s, isoDate);
   const evening = getEveningForDate(s, isoDate);
   const previous = previousMorning(s, isoDate);
   const previousResponse = previousEvening(s, isoDate);
   const readiness = readinessForDate(s, isoDate);
-  const lastJournal = s.journal[0];
+  const coachNotes = coachNotesForDate(s, isoDate);
+  const latestCoachNote = coachNotes[0];
   const dailyQuests = dailyQuestsForDate(s, isoDate);
   const dailyCoachPlan = dailyCoachPlanForDate(s, isoDate);
   return {
@@ -63,7 +66,7 @@ export function buildPacketJson(
       name: item.name,
       objective: item.objective,
     })),
-    recoveryIq: { level, xp: s.recoveryIqXp },
+    recoveryIq: { level, xp: recoveryIqXp },
     readiness: {
       status: readiness.state,
       label: readiness.label,
@@ -88,18 +91,19 @@ export function buildPacketJson(
       kind: q.kind,
       source: q.source,
       reason: q.reason,
+      details: q.details,
+      sourceLabel: q.sourceLabel,
     })),
     completedToday: dailyQuests.filter((q) => q.done).map((q) => q.label),
     pendingToday: dailyQuests.filter((q) => !q.done).map((q) => q.label),
-    coachNotesRecent: coachNotesForDate(s, isoDate).slice(0, 3),
+    coachNotesRecent: coachNotes.slice(0, 3),
     athleteNotesRecent: athleteNotesForDate(s, isoDate).slice(0, 3),
-    coachJournalRecent: s.journal.slice(0, 3),
     questionsForCoach: [
       "Is yesterday's response good enough to add load today?",
       "Should we prioritize extension or activation this week?",
     ],
     currentConcerns: morning?.notes ?? "",
-    lastCoachFocus: lastJournal?.nextFocus ?? null,
+    lastCoachFocus: latestCoachNote?.nextFocus ?? null,
   };
 }
 
@@ -113,7 +117,8 @@ export function buildPacketMarkdown(
   const mission = currentMission(s);
   const missions = activeMissions(s);
   const tracks = activeRecoveryTracksForPhase(s, phase);
-  const { level } = levelFromXp(s.recoveryIqXp);
+  const { level } = recoveryIqForState(s);
+  const recoveryIqXp = recoveryIqXpForState(s);
   const m = getMorningForDate(s, isoDate);
   const e = getEveningForDate(s, isoDate);
   const previous = previousMorning(s, isoDate);
@@ -132,7 +137,7 @@ export function buildPacketMarkdown(
   lines.push(`**Active Tracks:** ${tracks.map((track) => track.name).join(", ")}  `);
   lines.push(`**Current Mission:** ${mission.name} — ${mission.phase} (${mission.progress}%)  `);
   lines.push(`**Active Missions:** ${missions.map((item) => item.name).join(", ")}  `);
-  lines.push(`**Recovery IQ:** Level ${level} · ${s.recoveryIqXp} XP  `);
+  lines.push(`**Recovery IQ:** Level ${level} · ${recoveryIqXp} XP  `);
   lines.push(
     `**Readiness:** ${readiness.label} — ${dailyCoachPlan.readinessReason ?? readiness.summary}`,
   );
@@ -148,15 +153,14 @@ export function buildPacketMarkdown(
   lines.push("");
 
   if (m) {
-    lines.push(`## Morning Check-In`);
+    lines.push(`## Morning Baseline Check-In`);
     lines.push(`- Pain: ${m.pain}/10`);
-    lines.push(`- Swelling: ${m.swelling}/10`);
+    lines.push(`- Swelling level: ${m.swellingLevel ?? m.swelling}/10`);
     lines.push(`- Swelling context: ${m.swellingContext ?? "unknown"}`);
     lines.push(`- Swelling trend: ${m.swellingTrend ?? "unknown"}`);
-    lines.push(`- Walking Confidence: ${m.walkingConfidence}/5`);
-    lines.push(`- Quad Activation: ${m.quadActivation}/5`);
-    lines.push(`- Extension: ${m.extension}° from neutral (${m.extensionStatus ?? "not_tested"})`);
-    lines.push(`- Flexion: ${m.flexion}°`);
+    lines.push(`- Walking confidence: ${m.walkingConfidence}/5`);
+    lines.push(`- Extension status: ${formatPacketValue(m.extensionStatus)}`);
+    lines.push(`- Flexion comfort/status: ${formatPacketValue(m.flexionStatus)}`);
     lines.push(`- Sleep: ${m.sleepHours}h`);
     lines.push(`- Weight: ${m.weightKg}kg · Protein target: ${m.proteinTargetG}g`);
     lines.push(`- Confidence in knee: ${m.confidence}/5`);
@@ -167,34 +171,46 @@ export function buildPacketMarkdown(
   if (previous) {
     lines.push(`## Previous Morning`);
     lines.push(`- Date: ${previous.date}`);
-    lines.push(`- Pain: ${previous.pain}/10 · Swelling: ${previous.swelling}/10`);
-    lines.push(`- Walking Confidence: ${previous.walkingConfidence}/5`);
-    lines.push(`- Quad Activation: ${previous.quadActivation}/5`);
-    lines.push(`- Extension: ${previous.extension}° from neutral · Flexion: ${previous.flexion}°`);
+    lines.push(
+      `- Pain: ${previous.pain}/10 · Swelling: ${previous.swellingLevel ?? previous.swelling}/10`,
+    );
+    lines.push(`- Walking confidence: ${previous.walkingConfidence}/5`);
+    lines.push(`- Extension status: ${formatPacketValue(previous.extensionStatus)}`);
+    lines.push(`- Flexion comfort/status: ${formatPacketValue(previous.flexionStatus)}`);
     lines.push("");
   }
 
   if (previousResponse) {
     lines.push(`## Previous Evening Response`);
     lines.push(`- Date: ${previousResponse.date}`);
-    lines.push(`- Work completed: ${previousResponse.exercisesCompleted || "—"}`);
+    lines.push(`- Quests completed: ${previousResponse.exercisesCompleted || "—"}`);
     lines.push(
       `- Pain during: ${previousResponse.painDuring}/10 · Pain after: ${previousResponse.painAfter}/10`,
     );
     lines.push(
       `- Swelling change: ${previousResponse.swellingChange > 0 ? "+" : ""}${previousResponse.swellingChange}`,
     );
-    lines.push(`- Walking confidence: ${previousResponse.walkingConfidence}/5`);
+    lines.push(
+      `- Walking confidence after: ${previousResponse.walkingConfidenceAfter ?? previousResponse.walkingConfidence}/5`,
+    );
+    lines.push(`- Quad activation quality: ${previousResponse.quadActivationQuality}/5`);
+    lines.push(`- Extension response: ${formatPacketValue(previousResponse.extensionResponse)}`);
+    lines.push(`- Flexion response: ${formatPacketValue(previousResponse.flexionResponse)}`);
+    lines.push(`- Concerning symptoms: ${previousResponse.concerningSymptoms || "—"}`);
     lines.push(`- Notes: ${previousResponse.notes || "—"}`);
     lines.push("");
   }
 
   if (kind === "evening" && e) {
-    lines.push(`## Evening Check-In`);
-    lines.push(`- Exercises completed: ${e.exercisesCompleted || "—"}`);
+    lines.push(`## Evening Response Check-In`);
+    lines.push(`- Quests completed: ${e.exercisesCompleted || "—"}`);
     lines.push(`- Pain during: ${e.painDuring}/10 · Pain after: ${e.painAfter}/10`);
     lines.push(`- Swelling change: ${e.swellingChange > 0 ? "+" : ""}${e.swellingChange}`);
-    lines.push(`- Walking confidence: ${e.walkingConfidence}/5`);
+    lines.push(`- Walking confidence after: ${e.walkingConfidenceAfter ?? e.walkingConfidence}/5`);
+    lines.push(`- Quad activation quality: ${e.quadActivationQuality}/5`);
+    lines.push(`- Extension response: ${formatPacketValue(e.extensionResponse)}`);
+    lines.push(`- Flexion response: ${formatPacketValue(e.flexionResponse)}`);
+    lines.push(`- Concerning symptoms: ${e.concerningSymptoms || "—"}`);
     lines.push(`- Milestones touched: ${e.milestones || "—"}`);
     lines.push(`- Notes: ${e.notes || "—"}`);
     lines.push("");
@@ -202,9 +218,20 @@ export function buildPacketMarkdown(
 
   lines.push(`## Today's Work`);
   lines.push(`**Completed**`);
-  dailyQuests.filter((q) => q.done).forEach((q) => lines.push(`- ✅ ${q.label} (${q.reason})`));
+  dailyQuests
+    .filter((q) => q.done)
+    .forEach((q) => {
+      lines.push(`- ✅ ${q.label} (${q.reason})`);
+      if (q.details?.length) lines.push(`  - Details: ${q.details.join("; ")}`);
+    });
   lines.push(`**Pending**`);
-  dailyQuests.filter((q) => !q.done).forEach((q) => lines.push(`- ⬜ ${q.label} (${q.reason})`));
+  dailyQuests
+    .filter((q) => !q.done)
+    .forEach((q) => {
+      lines.push(`- ⬜ ${q.label} (${q.reason})`);
+      if (q.sourceLabel) lines.push(`  - Source: ${q.sourceLabel}`);
+      if (q.details?.length) lines.push(`  - Details: ${q.details.join("; ")}`);
+    });
   lines.push("");
 
   lines.push(`## Small Win`);
@@ -220,21 +247,13 @@ export function buildPacketMarkdown(
   );
   lines.push("");
 
-  lines.push(`## Recent Coach Journal`);
-  s.journal.slice(0, 3).forEach((j) => {
-    lines.push(`**${j.date}** — +${j.xpAwarded} XP`);
-    lines.push(`- Observation: ${j.observation}`);
-    lines.push(`- Interpretation: ${j.interpretation}`);
-    lines.push(`- Decision: ${j.decision}`);
-    lines.push(`- Next focus: ${j.nextFocus}`);
-    lines.push("");
-  });
-
   const coachNotes = coachNotesForDate(s, isoDate);
   if (coachNotes.length > 0) {
     lines.push(`## Coach Notes`);
     coachNotes.slice(0, 3).forEach((note) => {
-      lines.push(`- ${note.source}${note.author ? ` · ${note.author}` : ""}: ${note.body}`);
+      const author = note.authorName ? ` · ${note.authorName}` : "";
+      lines.push(`- ${note.source}${author} · ${note.noteType}: ${note.summary}`);
+      if (note.nextFocus) lines.push(`  - Next focus: ${note.nextFocus}`);
     });
     lines.push("");
   }
@@ -256,4 +275,12 @@ export function buildPacketMarkdown(
   lines.push(m?.notes || "None reported.");
 
   return lines.join("\n");
+}
+
+function formatPacketValue(value: string | undefined) {
+  if (!value) return "—";
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

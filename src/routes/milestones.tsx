@@ -1,6 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, PageHeader, Surface } from "@/components/app-shell";
-import { MISSIONS, setState, usePhoenix } from "@/lib/phoenix-data";
+import {
+  createRecoveryIqEvent,
+  MISSIONS,
+  setState,
+  upsertRecoveryIqEvent,
+  usePhoenix,
+} from "@/lib/phoenix-data";
 import { CheckCircle2, Lock, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -17,19 +23,38 @@ export const Route = createFileRoute("/milestones")({
 function MilestonesPage() {
   const s = usePhoenix();
   const unlock = (id: string) =>
-    setState((prev) => ({
-      ...prev,
-      milestones: prev.milestones.map((mi) =>
-        mi.id === id
-          ? {
-              ...mi,
-              status: "unlocked",
-              unlockedAt: new Date().toISOString().slice(0, 10),
-            }
-          : mi,
-      ),
-      recoveryIqXp: prev.recoveryIqXp + 100,
-    }));
+    setState((prev) => {
+      const milestone = prev.milestones.find((mi) => mi.id === id);
+      if (!milestone || milestone.status === "unlocked") return prev;
+
+      const timestamp = new Date().toISOString();
+      const date = timestamp.slice(0, 10);
+
+      return {
+        ...prev,
+        milestones: prev.milestones.map((mi) =>
+          mi.id === id
+            ? {
+                ...mi,
+                status: "unlocked",
+                unlockedAt: date,
+              }
+            : mi,
+        ),
+        recoveryIqEvents: upsertRecoveryIqEvent(
+          prev.recoveryIqEvents,
+          createRecoveryIqEvent({
+            date,
+            sourceType: "milestone",
+            sourceId: `milestone:${id}`,
+            title: "Milestone unlocked",
+            description: milestone.name,
+            xpAmount: 100,
+            timestamp,
+          }),
+        ),
+      };
+    });
 
   return (
     <AppShell>

@@ -36,9 +36,9 @@ export type MetricId =
   | "swelling-trend"
   | "walking-confidence"
   | "movement-quality"
-  | "quad-activation"
+  | "quad-activation-quality"
   | "extension-status"
-  | "flexion"
+  | "flexion-status"
   | "sleep-hours"
   | "protein-target"
   | "session-tolerance"
@@ -53,10 +53,11 @@ export type CheckInFieldId =
   | "swelling-trend"
   | "walking-confidence"
   | "confidence-in-knee"
-  | "quad-activation"
-  | "extension"
+  | "quad-activation-quality"
   | "extension-status"
-  | "flexion"
+  | "flexion-status"
+  | "extension-response"
+  | "flexion-response"
   | "movement-quality"
   | "training-readiness"
   | "sport-confidence"
@@ -66,6 +67,7 @@ export type CheckInFieldId =
   | "pain-during"
   | "pain-after"
   | "swelling-change"
+  | "concerning-symptoms"
   | "energy-fatigue"
   | "milestones"
   | "notes";
@@ -76,11 +78,24 @@ export type SwellingTrend = "improved" | "stable" | "worse" | "unknown";
 export type MetricDirection = "lower-better" | "higher-better";
 
 export type ExtensionStatus =
-  | "neutral"
+  | "not_tested"
+  | "reaches_neutral"
   | "slightly_limited"
   | "moderately_limited"
-  | "significantly_limited"
-  | "not_tested";
+  | "significantly_limited";
+
+export type FlexionStatus =
+  | "not_tested"
+  | "comfortable_gentle_bend"
+  | "stiff_but_tolerable"
+  | "painful_or_pinching";
+
+export type RangeResponse =
+  | "not_tested"
+  | "felt_same"
+  | "felt_better"
+  | "felt_stiffer"
+  | "painful_or_pinching";
 
 export interface Campaign {
   id: CampaignId;
@@ -183,12 +198,8 @@ export interface MorningCheckIn {
   swellingTrend?: SwellingTrend;
   swellingContext?: SwellingContext;
   walkingConfidence: number;
-  quadActivation: number;
-  extension: number;
-  extensionStatus?: ExtensionStatus;
-  extensionEstimateDegrees?: 0 | 5 | 10 | 15;
-  flexion: number;
-  flexionComfort?: "comfortable_range_only" | "end_range_sensitive" | "not_tested";
+  extensionStatus: ExtensionStatus;
+  flexionStatus: FlexionStatus;
   sleepHours: number;
   weightKg: number;
   proteinTargetG: number;
@@ -210,6 +221,10 @@ export interface EveningCheckIn {
   swellingChange: number; // -3..+3
   walkingConfidence: number;
   walkingConfidenceAfter?: number;
+  quadActivationQuality: number;
+  extensionResponse: RangeResponse;
+  flexionResponse: RangeResponse;
+  concerningSymptoms: string;
   movementQualityAfter?: number;
   energyFatigue?: number;
   milestones: string;
@@ -223,16 +238,6 @@ export interface CheckIn {
   phaseId: PhaseId;
   morning?: MorningCheckIn;
   evening?: EveningCheckIn;
-}
-
-export interface JournalEntry {
-  id: string;
-  date: string;
-  observation: string;
-  interpretation: string;
-  decision: string;
-  xpAwarded: number;
-  nextFocus: string;
 }
 
 export type QuestKind = "main" | "side";
@@ -265,6 +270,9 @@ export interface Quest {
   category?: QuestKind;
   source: QuestSource;
   reason: string;
+  details?: string[];
+  sourceLabel?: string;
+  relatedQuestIds?: string[];
   phaseId?: PhaseId;
   trackIds?: RecoveryTrackId[];
   missionId?: MissionId;
@@ -286,21 +294,31 @@ export interface ClinicianConstraint {
   blockedLabelIncludes?: string[];
 }
 
-export type CoachNoteSource =
-  | "physio"
-  | "surgeon"
-  | "chatgpt"
-  | "trainer"
-  | "coach"
-  | "manual"
-  | "other";
+export type CoachNoteSource = "ChatGPT" | "physio" | "surgeon" | "trainer" | "other";
+
+export type CoachNoteType =
+  | "evening_review"
+  | "physio_note"
+  | "surgeon_note"
+  | "restriction"
+  | "milestone"
+  | "general";
+
+export type CoachNoteAppliesTo = "today" | "current_phase" | "until_next_appointment" | "custom";
+
+export type CoachNotePriority = "normal" | "important" | "override";
 
 export interface CoachNote {
   id: string;
   date: string;
   source: CoachNoteSource;
-  author?: string;
-  body: string;
+  noteType: CoachNoteType;
+  authorName?: string;
+  summary: string;
+  fullNote: string;
+  nextFocus?: string;
+  appliesTo: CoachNoteAppliesTo;
+  priority: CoachNotePriority;
   relatedPhaseId?: PhaseId;
   relatedMissionIds?: MissionId[];
   relatedTrackIds?: RecoveryTrackId[];
@@ -319,24 +337,24 @@ export interface AthleteNote {
   createdAt: string;
 }
 
-export type RecoveryIqEventSource =
-  | "check-in"
+export type RecoveryIqEventSourceType =
+  | "check_in"
   | "quest"
+  | "coach_plan"
   | "milestone"
-  | "consistency"
-  | "smart-decision"
-  | "coach-note";
+  | "small_win"
+  | "smart_decision"
+  | "manual_adjustment";
 
 export interface RecoveryIqEvent {
   id: string;
   date: string;
-  source: RecoveryIqEventSource;
-  xp: number;
-  summary: string;
-  reason?: string;
-  relatedQuestId?: string;
-  relatedMilestoneId?: string;
-  relatedNoteId?: string;
+  timestamp: string;
+  sourceType: RecoveryIqEventSourceType;
+  sourceId?: string;
+  title: string;
+  description?: string;
+  xpAmount: number;
   createdAt: string;
 }
 
@@ -349,7 +367,6 @@ export interface SmallWin {
   description: string;
   source: SmallWinSource;
   relatedMetric?: MetricId;
-  xp?: number;
 }
 
 export interface DailyCoachPlanTarget {
@@ -439,12 +456,13 @@ export interface CoachPacket {
     kind: QuestKind;
     source: QuestSource;
     reason: string;
+    details?: string[];
+    sourceLabel?: string;
   }[];
   completedToday: string[];
   pendingToday: string[];
   coachNotesRecent: CoachNote[];
   athleteNotesRecent: AthleteNote[];
-  coachJournalRecent: JournalEntry[];
   questionsForCoach: string[];
   currentConcerns: string;
   lastCoachFocus: string | null;
@@ -456,13 +474,13 @@ export interface PhoenixState {
   recoveryTracks: RecoveryTrack[];
   missions: Mission[];
   currentMissionId: MissionId;
-  recoveryIqXp: number; // total xp
+  /** @deprecated Recovery IQ is derived from recoveryIqEvents. */
+  recoveryIqXp: number;
   morning: MorningCheckIn | null;
   evening: EveningCheckIn | null;
   checkIns: CheckIn[];
   history: { morning: MorningCheckIn[]; evening: EveningCheckIn[] };
   milestones: Milestone[];
-  journal: JournalEntry[];
   todayQuests: DailyQuest[];
   dailyCoachPlans: DailyCoachPlan[];
   coachNotes: CoachNote[];
@@ -549,14 +567,14 @@ export const METRIC_DEFINITIONS: Record<MetricId, MetricDefinition> = {
     direction: "higher-better",
     unit: "",
   },
-  "quad-activation": {
-    id: "quad-activation",
-    label: "Quad activation",
+  "quad-activation-quality": {
+    id: "quad-activation-quality",
+    label: "Quad activation quality",
     direction: "higher-better",
     unit: "",
   },
   "extension-status": { id: "extension-status", label: "Extension" },
-  flexion: { id: "flexion", label: "Flexion", direction: "higher-better", unit: "°" },
+  "flexion-status": { id: "flexion-status", label: "Flexion comfort" },
   "sleep-hours": { id: "sleep-hours", label: "Sleep", direction: "higher-better", unit: "h" },
   "protein-target": { id: "protein-target", label: "Protein target", unit: "g" },
   "session-tolerance": { id: "session-tolerance", label: "Session tolerance" },
@@ -582,19 +600,21 @@ const CHECK_IN_FIELD_LABELS: Record<CheckInFieldId, string> = {
   "swelling-trend": "Swelling trend",
   "walking-confidence": "Walking confidence",
   "confidence-in-knee": "Confidence in knee",
-  "quad-activation": "Quad activation",
-  extension: "Extension",
+  "quad-activation-quality": "Quad activation quality",
   "extension-status": "Extension status",
-  flexion: "Flexion",
+  "flexion-status": "Flexion comfort/status",
+  "extension-response": "Extension response",
+  "flexion-response": "Flexion response",
   "movement-quality": "Movement quality",
   "training-readiness": "Training tolerance",
   "sport-confidence": "Sport confidence",
   "sleep-hours": "Sleep",
   "protein-target": "Protein target",
-  "exercises-completed": "Exercises completed",
+  "exercises-completed": "Quests completed",
   "pain-during": "Pain during activity",
   "pain-after": "Pain after activity",
   "swelling-change": "Swelling change",
+  "concerning-symptoms": "Sharp pain / instability / concerning symptoms",
   "energy-fatigue": "Energy / fatigue",
   milestones: "Milestones achieved",
   notes: "Notes",
@@ -611,22 +631,16 @@ export const PHASE_CONFIGS: Phase[] = [
     order: 1,
     dashboardQuestion: "Is the knee settling down?",
     activeTrackIds: ["symptoms", "walking-movement", "activation"],
-    primaryMetrics: [
-      "pain",
-      "swelling-level",
-      "walking-confidence",
-      "quad-activation",
-      "extension-status",
-    ],
-    supportingMetrics: ["sleep-hours", "swelling-trend"],
+    primaryMetrics: ["pain", "swelling-level", "walking-confidence", "extension-status"],
+    supportingMetrics: ["sleep-hours", "swelling-trend", "flexion-status"],
     morningCheckInFields: [
       "pain",
       "swelling",
       "swelling-context",
       "swelling-trend",
       "walking-confidence",
-      "quad-activation",
-      "extension",
+      "extension-status",
+      "flexion-status",
       "sleep-hours",
       "protein-target",
       "notes",
@@ -637,6 +651,10 @@ export const PHASE_CONFIGS: Phase[] = [
       "pain-after",
       "swelling-change",
       "walking-confidence",
+      "quad-activation-quality",
+      "extension-response",
+      "flexion-response",
+      "concerning-symptoms",
       "notes",
     ],
     questTemplateIds: [
@@ -756,9 +774,9 @@ export const PHASE_CONFIGS: Phase[] = [
     dashboardQuestion: "Can I control and move the knee?",
     activeTrackIds: ["symptoms", "rom", "activation", "walking-movement"],
     primaryMetrics: [
-      "quad-activation",
+      "quad-activation-quality",
       "extension-status",
-      "flexion",
+      "flexion-status",
       "walking-confidence",
       "swelling-trend",
       "pain",
@@ -770,10 +788,8 @@ export const PHASE_CONFIGS: Phase[] = [
       "swelling-context",
       "swelling-trend",
       "walking-confidence",
-      "quad-activation",
-      "extension",
       "extension-status",
-      "flexion",
+      "flexion-status",
       "sleep-hours",
       "protein-target",
       "notes",
@@ -784,6 +800,10 @@ export const PHASE_CONFIGS: Phase[] = [
       "pain-after",
       "swelling-change",
       "walking-confidence",
+      "quad-activation-quality",
+      "extension-response",
+      "flexion-response",
+      "concerning-symptoms",
       "milestones",
       "notes",
     ],
@@ -804,7 +824,7 @@ export const PHASE_CONFIGS: Phase[] = [
         label: "Morning check-in",
         kind: "main",
         xp: 10,
-        reason: "Because Phase 2 needs activation and ROM signals before loading decisions",
+        reason: "Because Phase 2 needs a morning baseline before loading decisions",
       },
       {
         id: "quad-activation",
@@ -903,26 +923,20 @@ export const PHASE_CONFIGS: Phase[] = [
       },
     ],
     smallWinRuleIds: [
-      "quad-activation-improved",
-      "extension-closer-to-neutral",
-      "flexion-improved",
+      "rom-response-stable",
+      "quad-activation-quality-logged",
       "main-quests-completed",
     ],
     smallWinRules: [
       {
-        id: "quad-activation-improved",
-        label: "Quad activation improved",
-        description: "Quad activation is higher than the previous morning check-in.",
+        id: "rom-response-stable",
+        label: "ROM response stable",
+        description: "Extension and flexion response stayed tolerable after today's work.",
       },
       {
-        id: "extension-closer-to-neutral",
-        label: "Extension closer to neutral",
-        description: "Extension deficit is lower than the previous morning check-in.",
-      },
-      {
-        id: "flexion-improved",
-        label: "Flexion improved",
-        description: "Comfortable flexion is higher than the previous morning check-in.",
+        id: "quad-activation-quality-logged",
+        label: "Quad activation logged",
+        description: "Evening check-in captured quad activation quality after activation work.",
       },
       {
         id: "main-quests-completed",
@@ -937,14 +951,20 @@ export const PHASE_CONFIGS: Phase[] = [
     order: 3,
     dashboardQuestion: "Can I move normally and tolerate basic loading?",
     activeTrackIds: ["symptoms", "rom", "walking-movement", "capacity"],
-    primaryMetrics: ["movement-quality", "pain", "swelling-trend", "session-tolerance", "flexion"],
-    supportingMetrics: ["quad-activation", "next-morning-response"],
+    primaryMetrics: [
+      "movement-quality",
+      "pain",
+      "swelling-trend",
+      "session-tolerance",
+      "flexion-status",
+    ],
+    supportingMetrics: ["quad-activation-quality", "next-morning-response"],
     morningCheckInFields: [
       "pain",
       "swelling",
       "movement-quality",
-      "extension",
-      "flexion",
+      "extension-status",
+      "flexion-status",
       "sleep-hours",
       "notes",
     ],
@@ -1315,27 +1335,6 @@ const seedMilestones: Milestone[] = [
   },
 ];
 
-const seedJournal: JournalEntry[] = [
-  {
-    id: "j-1",
-    date: "2025-06-20",
-    observation: "Morning swelling 1/10, quad activation 4/5 for 4th day.",
-    interpretation: "Activation pattern is consolidating. Tissue is tolerating yesterday's volume.",
-    decision: "Hold volume. Add terminal knee extension holds at end of session.",
-    xpAwarded: 40,
-    nextFocus: "Earn straight leg raise without lag.",
-  },
-  {
-    id: "j-2",
-    date: "2025-06-22",
-    observation: "Asked whether to push range despite end-range pinch.",
-    interpretation: "Evidence-based question. Pinch ≠ progress.",
-    decision: "Back off 5°. Re-test in 48h. Log next-morning swelling.",
-    xpAwarded: 25,
-    nextFocus: "Evidence over ego — keep this habit.",
-  },
-];
-
 // Seed prior morning check-ins so trends and historical viewing work.
 function isoDaysAgo(n: number): string {
   const d = new Date();
@@ -1356,12 +1355,8 @@ export function createDefaultMorningCheckIn(
     swellingTrend: "stable",
     swellingContext: "surgical_baseline",
     walkingConfidence: 3,
-    quadActivation: 3,
-    extension: 5,
     extensionStatus: "slightly_limited",
-    extensionEstimateDegrees: 5,
-    flexion: 110,
-    flexionComfort: "comfortable_range_only",
+    flexionStatus: "comfortable_gentle_bend",
     sleepHours: 7,
     weightKg: 85,
     proteinTargetG: 160,
@@ -1385,6 +1380,10 @@ export function createDefaultEveningCheckIn(
     swellingChange: 0,
     walkingConfidence: 3,
     walkingConfidenceAfter: 3,
+    quadActivationQuality: 3,
+    extensionResponse: "felt_same",
+    flexionResponse: "felt_same",
+    concerningSymptoms: "",
     milestones: "",
     notes: "",
   };
@@ -1400,12 +1399,8 @@ const seedMorningHistory: MorningCheckIn[] = [
     swellingTrend: "unknown",
     swellingContext: "unknown",
     walkingConfidence: 2,
-    quadActivation: 2,
-    extension: 7,
     extensionStatus: "moderately_limited",
-    extensionEstimateDegrees: 10,
-    flexion: 105,
-    flexionComfort: "comfortable_range_only",
+    flexionStatus: "stiff_but_tolerable",
     sleepHours: 6.5,
     weightKg: 86,
     proteinTargetG: 170,
@@ -1421,12 +1416,8 @@ const seedMorningHistory: MorningCheckIn[] = [
     swellingTrend: "improved",
     swellingContext: "surgical_baseline",
     walkingConfidence: 3,
-    quadActivation: 3,
-    extension: 5,
     extensionStatus: "slightly_limited",
-    extensionEstimateDegrees: 5,
-    flexion: 112,
-    flexionComfort: "comfortable_range_only",
+    flexionStatus: "comfortable_gentle_bend",
     sleepHours: 7,
     weightKg: 86,
     proteinTargetG: 170,
@@ -1442,12 +1433,8 @@ const seedMorningHistory: MorningCheckIn[] = [
     swellingTrend: "stable",
     swellingContext: "surgical_baseline",
     walkingConfidence: 3,
-    quadActivation: 3,
-    extension: 5,
     extensionStatus: "slightly_limited",
-    extensionEstimateDegrees: 5,
-    flexion: 115,
-    flexionComfort: "comfortable_range_only",
+    flexionStatus: "comfortable_gentle_bend",
     sleepHours: 7,
     weightKg: 86,
     proteinTargetG: 170,
@@ -1468,223 +1455,11 @@ function createCheckIn(date: string, morning?: MorningCheckIn, evening?: Evening
 
 const seedCoachNotes: CoachNote[] = [];
 
-const seedAthleteNotes: AthleteNote[] = [
-  {
-    id: "athlete-note-1",
-    date: todayIso(),
-    body: "Felt stiff for the first few minutes, then settled. Want to know whether ROM or quad work should be the priority today.",
-    relatedPhaseId: "activation-early-rom",
-    relatedMissionIds: ["wake-the-quad", "restore-extension"],
-    relatedTrackIds: ["activation", "rom"],
-    tags: ["morning-context"],
-    createdAt: `${todayIso()}T07:45:00.000Z`,
-  },
-];
+const seedAthleteNotes: AthleteNote[] = [];
 
-const seedRecoveryIqEvents: RecoveryIqEvent[] = [
-  {
-    id: "iq-morning-check-in",
-    date: todayIso(),
-    source: "check-in",
-    xp: 10,
-    summary: "Completed morning check-in",
-    reason: "Daily evidence was logged before choosing the workload.",
-    createdAt: `${todayIso()}T07:40:00.000Z`,
-  },
-  {
-    id: "iq-smart-modify",
-    date: todayIso(),
-    source: "smart-decision",
-    xp: 20,
-    summary: "Chose Modify over volume chasing",
-    reason: "Stiffness and early swelling context support controlled work rather than progression.",
-    relatedNoteId: "coach-note-1",
-    createdAt: `${todayIso()}T08:05:00.000Z`,
-  },
-];
+const seedRecoveryIqEvents: RecoveryIqEvent[] = [];
 
-const seedSmallWins: SmallWin[] = [
-  {
-    id: "small-win-today",
-    date: todayIso(),
-    title: "Pain remained in the green zone",
-    description: "Pain stayed low while quad activation and ROM remain trainable.",
-    source: "rule",
-    relatedMetric: "pain",
-    xp: 5,
-  },
-];
-
-function createSeedDailyCoachPlan(date: string): DailyCoachPlan {
-  const planId = `plan-${date}`;
-  const questBase = {
-    date,
-    done: false,
-    status: "pending" as QuestStatus,
-    source: "daily-coach-plan" as QuestSource,
-    planId,
-    phaseId: "activation-early-rom" as PhaseId,
-  };
-
-  return {
-    id: planId,
-    date,
-    source: "ChatGPT",
-    authorName: "ChatGPT",
-    importedFromNoteId: "coach-note-1",
-    createdAt: `${date}T08:05:00.000Z`,
-    importedAt: `${date}T08:05:00.000Z`,
-    planType: "daily_coach_plan",
-    phaseId: "activation-early-rom",
-    missionIds: ["wake-the-quad", "restore-extension", "normalize-walking"],
-    trackIds: ["symptoms", "rom", "activation", "walking-movement"],
-    readiness: "modify",
-    readinessReason:
-      "Expected early post-op swelling context is present, but pain is low and walking confidence is acceptable. Keep work gentle and evidence-led.",
-    primaryFocus: "Activation + early ROM without provoking tomorrow's knee response.",
-    focus: "Activation + early ROM without provoking tomorrow's knee response.",
-    priority: "Reinforce quad activation under low fatigue.",
-    workload:
-      "Hold yesterday's volume. Add gentle extension and flexion exposure only if tolerated.",
-    rationale:
-      "Activation is consolidating and swelling is stable; ROM can run in parallel at low intensity.",
-    nextReassessment:
-      "Tonight and tomorrow morning: pain after activity, swelling change, and walking confidence.",
-    confidence: "Medium",
-    targets: [
-      {
-        id: "target-quad",
-        label: "Quad activation",
-        value: "Quality sets, stop before fatigue compensation",
-        trackId: "activation",
-        reason: "Quad signal remains the main gate for later loading.",
-      },
-      {
-        id: "target-rom",
-        label: "ROM exposure",
-        value: "Gentle extension plus comfortable heel slides",
-        trackId: "rom",
-        reason: "Phase 2 includes both activation and early ROM.",
-      },
-      {
-        id: "target-response",
-        label: "Response check",
-        value: "Evening check-in plus next-morning swelling",
-        trackId: "symptoms",
-        reason: "Tomorrow's response decides whether this workload was appropriate.",
-      },
-    ],
-    stopRules: [
-      "Stop if pain rises above 4/10 during work.",
-      "Stop if swelling noticeably increases or walking quality worsens.",
-      "Avoid aggressive end-range ROM testing.",
-    ],
-    eveningCheckInFocus: [
-      "Pain during and after activity",
-      "Swelling change",
-      "Walking confidence after work",
-      "Any ROM symptom response",
-    ],
-    notes:
-      "Imported plan seed shows the intended Daily Coach Plan shape. External coaching remains outside the app.",
-    status: "active",
-    quests: [
-      {
-        ...questBase,
-        id: "morning-check-in",
-        label: "Morning check-in",
-        title: "Morning check-in",
-        xp: 10,
-        kind: "main",
-        category: "main",
-        reason: "Because today's plan needs a morning baseline",
-        trackIds: ["symptoms"],
-      },
-      {
-        ...questBase,
-        id: "quad-activation",
-        label: "Quad activation sets",
-        title: "Quad activation sets",
-        xp: 15,
-        kind: "main",
-        category: "main",
-        reason: "Because the current focus includes Wake the Quad",
-        missionId: "wake-the-quad",
-        trackIds: ["activation"],
-      },
-      {
-        ...questBase,
-        id: "extension-exposure",
-        label: "Gentle heel prop 3-5 min, only if tolerated",
-        title: "Gentle heel prop 3-5 min, only if tolerated",
-        xp: 15,
-        kind: "main",
-        category: "main",
-        reason: "Because Phase 2 includes early extension work",
-        missionId: "restore-extension",
-        trackIds: ["rom"],
-      },
-      {
-        ...questBase,
-        id: "gentle-heel-slides",
-        label: "Gentle heel slides 1-2 sets of 10, comfortable range only",
-        title: "Gentle heel slides 1-2 sets of 10, comfortable range only",
-        xp: 15,
-        kind: "main",
-        category: "main",
-        reason: "Because ROM includes flexion as well as extension",
-        missionId: "restore-extension",
-        trackIds: ["rom"],
-      },
-      {
-        ...questBase,
-        id: "supported-walking",
-        label: "Short walking practice with support as needed",
-        title: "Short walking practice with support as needed",
-        xp: 15,
-        kind: "main",
-        category: "main",
-        reason: "Because walking quality matters more than dropping support quickly",
-        missionId: "normalize-walking",
-        trackIds: ["walking-movement"],
-      },
-      {
-        ...questBase,
-        id: "evening-check-in",
-        label: "Evening check-in",
-        title: "Evening check-in",
-        xp: 10,
-        kind: "main",
-        category: "main",
-        reason: "Because response data drives tomorrow's plan",
-        trackIds: ["symptoms"],
-      },
-      {
-        ...questBase,
-        id: "protein-target",
-        label: "Protein target",
-        title: "Protein target",
-        xp: 10,
-        kind: "side",
-        category: "side",
-        reason: "Because nutrition supports recovery",
-        trackIds: ["capacity"],
-      },
-      {
-        ...questBase,
-        id: "sleep-window",
-        label: "Sleep window",
-        title: "Sleep window",
-        xp: 5,
-        kind: "side",
-        category: "side",
-        reason: "Because sleep supports tomorrow's response",
-        trackIds: ["symptoms"],
-      },
-    ],
-    coachNoteIds: ["coach-note-1"],
-  };
-}
+const seedSmallWins: SmallWin[] = [];
 
 const seedTodayMorning: MorningCheckIn = {
   date: todayIso(),
@@ -1695,12 +1470,8 @@ const seedTodayMorning: MorningCheckIn = {
   swellingTrend: "stable",
   swellingContext: "surgical_baseline",
   walkingConfidence: 4,
-  quadActivation: 4,
-  extension: 3,
   extensionStatus: "slightly_limited",
-  extensionEstimateDegrees: 5,
-  flexion: 118,
-  flexionComfort: "comfortable_range_only",
+  flexionStatus: "comfortable_gentle_bend",
   sleepHours: 7.5,
   weightKg: 86,
   proteinTargetG: 170,
@@ -1726,13 +1497,12 @@ const initial: PhoenixState = {
   surgeryDate: "2026-06-25",
   campaignName: "ACL Revision Prehab",
   currentMissionId: "wake-the-quad",
-  recoveryIqXp: 1240,
+  recoveryIqXp: 0,
   morning: seedTodayMorning,
   evening: null,
   checkIns: [createCheckIn(todayIso(), seedTodayMorning, undefined)],
   history: { morning: seedMorningHistory, evening: [] },
   milestones: seedMilestones,
-  journal: seedJournal,
   todayQuests: [],
   dailyCoachPlans: [],
   coachNotes: seedCoachNotes,
@@ -1743,10 +1513,13 @@ const initial: PhoenixState = {
   questCompletions: {},
   clinicianConstraints: [],
   todayRecommendation: {
-    priority: "Reinforce quad activation under low fatigue.",
-    workload: "Hold yesterday's volume. Add 3× terminal knee extension holds.",
-    reason: "Activation is consolidating (4/5 for 4 days). Swelling stable at 1/10.",
-    nextReassessment: "48h — extension and morning swelling.",
+    priority: "Keep activation and ROM gentle until evening response confirms tolerance.",
+    workload:
+      "Hold volume. Use comfortable activation and ROM exposure only if symptoms stay quiet.",
+    reason:
+      "Morning baseline is calm; next progression depends on evening pain, swelling, and ROM response.",
+    nextReassessment:
+      "Tonight and tomorrow morning: pain after activity, swelling change, and walking confidence.",
     confidence: "Medium",
   },
 };
@@ -1759,6 +1532,273 @@ function normalizePhaseConfigs(savedPhases?: Partial<Phase>[]): Phase[] {
       ...seed,
     };
   });
+}
+
+function normalizeCoachNoteSource(source: unknown): CoachNoteSource {
+  if (source === "ChatGPT" || source === "chatgpt") return "ChatGPT";
+  if (source === "physio" || source === "surgeon" || source === "trainer" || source === "other")
+    return source;
+  return "other";
+}
+
+function normalizeCoachNoteType(value: unknown): CoachNoteType {
+  return value === "evening_review" ||
+    value === "physio_note" ||
+    value === "surgeon_note" ||
+    value === "restriction" ||
+    value === "milestone" ||
+    value === "general"
+    ? value
+    : "general";
+}
+
+function normalizeCoachNoteAppliesTo(value: unknown): CoachNoteAppliesTo {
+  return value === "today" ||
+    value === "current_phase" ||
+    value === "until_next_appointment" ||
+    value === "custom"
+    ? value
+    : "today";
+}
+
+function normalizeCoachNotePriority(value: unknown): CoachNotePriority {
+  return value === "normal" || value === "important" || value === "override" ? value : "normal";
+}
+
+function normalizeCoachNote(
+  note: Partial<CoachNote> & { author?: string; body?: string },
+): CoachNote {
+  const fullNote = note.fullNote ?? note.body ?? "";
+  return {
+    id: note.id ?? `coach-note-${Date.now()}`,
+    date: note.date ?? todayIso(),
+    source: normalizeCoachNoteSource(note.source),
+    noteType: normalizeCoachNoteType(note.noteType),
+    authorName: note.authorName ?? note.author,
+    summary: note.summary ?? fullNote.split("\n")[0] ?? "",
+    fullNote,
+    nextFocus: note.nextFocus,
+    appliesTo: normalizeCoachNoteAppliesTo(note.appliesTo),
+    priority: normalizeCoachNotePriority(note.priority),
+    relatedPhaseId: note.relatedPhaseId,
+    relatedMissionIds: note.relatedMissionIds,
+    relatedTrackIds: note.relatedTrackIds,
+    tags: note.tags ?? [],
+    createdAt: note.createdAt ?? new Date().toISOString(),
+  };
+}
+
+const DEMO_RECOVERY_IQ_EVENT_IDS = new Set(["iq-morning-check-in", "iq-smart-modify"]);
+
+function normalizeRecoveryIqEventSourceType(value: unknown): RecoveryIqEventSourceType | null {
+  return value === "check_in" ||
+    value === "quest" ||
+    value === "coach_plan" ||
+    value === "milestone" ||
+    value === "small_win" ||
+    value === "smart_decision" ||
+    value === "manual_adjustment"
+    ? value
+    : null;
+}
+
+function normalizeRecoveryIqEvent(value: unknown): RecoveryIqEvent | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const rawId = stringValue(record.id);
+  if (DEMO_RECOVERY_IQ_EVENT_IDS.has(rawId)) return null;
+
+  const sourceType = normalizeRecoveryIqEventSourceType(record.sourceType);
+  if (!sourceType) return null;
+
+  const date =
+    stringValue(record.date) ||
+    stringValue(record.timestamp).slice(0, 10) ||
+    stringValue(record.createdAt).slice(0, 10) ||
+    todayIso();
+  const timestamp =
+    stringValue(record.timestamp) || stringValue(record.createdAt) || new Date().toISOString();
+  const title = stringValue(record.title);
+  const xpAmount =
+    typeof record.xpAmount === "number" && Number.isFinite(record.xpAmount) ? record.xpAmount : 0;
+
+  return {
+    id:
+      rawId ||
+      recoveryIqEventId(sourceType, stringValue(record.sourceId) || undefined, date, title),
+    date,
+    timestamp,
+    sourceType,
+    sourceId: stringValue(record.sourceId) || undefined,
+    title: title || "Recovery IQ event",
+    description: stringValue(record.description) || undefined,
+    xpAmount,
+    createdAt: stringValue(record.createdAt) || timestamp,
+  };
+}
+
+function normalizeSmallWin(value: unknown): SmallWin | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Partial<SmallWin> & { xp?: number };
+  if (record.id === "small-win-today") return null;
+  if (!record.id || !record.date || !record.title || !record.description || !record.source) {
+    return null;
+  }
+  return {
+    id: record.id,
+    date: record.date,
+    title: record.title,
+    description: record.description,
+    source: record.source,
+    relatedMetric: record.relatedMetric,
+  };
+}
+
+type LegacyMorningCheckIn = Partial<MorningCheckIn> & {
+  quadActivation?: number;
+  extension?: number;
+  extensionStatus?: ExtensionStatus | "neutral";
+  extensionEstimateDegrees?: number;
+  flexion?: number;
+  flexionComfort?: "comfortable_range_only" | "end_range_sensitive" | "not_tested";
+};
+
+function finiteNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeExtensionStatus(status: unknown, legacyDegrees: unknown): ExtensionStatus {
+  if (status === "reaches_neutral" || status === "neutral") return "reaches_neutral";
+  if (
+    status === "not_tested" ||
+    status === "slightly_limited" ||
+    status === "moderately_limited" ||
+    status === "significantly_limited"
+  ) {
+    return status;
+  }
+
+  const degrees = finiteNumber(legacyDegrees, Number.NaN);
+  if (!Number.isFinite(degrees)) return "not_tested";
+  if (degrees <= 0) return "reaches_neutral";
+  if (degrees <= 5) return "slightly_limited";
+  if (degrees <= 10) return "moderately_limited";
+  return "significantly_limited";
+}
+
+function normalizeFlexionStatus(
+  status: unknown,
+  legacyComfort: unknown,
+  legacyDegrees: unknown,
+): FlexionStatus {
+  if (
+    status === "not_tested" ||
+    status === "comfortable_gentle_bend" ||
+    status === "stiff_but_tolerable" ||
+    status === "painful_or_pinching"
+  ) {
+    return status;
+  }
+
+  if (legacyComfort === "not_tested") return "not_tested";
+  if (legacyComfort === "end_range_sensitive") return "painful_or_pinching";
+  if (legacyComfort === "comfortable_range_only") return "comfortable_gentle_bend";
+
+  const degrees = finiteNumber(legacyDegrees, Number.NaN);
+  if (!Number.isFinite(degrees)) return "not_tested";
+  if (degrees < 90) return "stiff_but_tolerable";
+  return "comfortable_gentle_bend";
+}
+
+function normalizeRangeResponse(value: unknown): RangeResponse {
+  return value === "not_tested" ||
+    value === "felt_same" ||
+    value === "felt_better" ||
+    value === "felt_stiffer" ||
+    value === "painful_or_pinching"
+    ? value
+    : "not_tested";
+}
+
+function normalizeMorningCheckIn(
+  entry: LegacyMorningCheckIn | undefined,
+): MorningCheckIn | undefined {
+  if (!entry) return undefined;
+  const date = entry.date ?? todayIso();
+  const phaseId = entry.phaseId ?? "activation-early-rom";
+  const fallback = createDefaultMorningCheckIn(date, phaseId);
+  return {
+    date,
+    phaseId,
+    pain: finiteNumber(entry.pain, fallback.pain),
+    swelling: finiteNumber(entry.swelling, fallback.swelling),
+    swellingLevel: finiteNumber(entry.swellingLevel ?? entry.swelling, fallback.swellingLevel ?? 1),
+    swellingTrend: entry.swellingTrend ?? fallback.swellingTrend,
+    swellingContext: entry.swellingContext ?? fallback.swellingContext,
+    walkingConfidence: finiteNumber(entry.walkingConfidence, fallback.walkingConfidence),
+    extensionStatus: normalizeExtensionStatus(
+      entry.extensionStatus,
+      entry.extensionEstimateDegrees ?? entry.extension,
+    ),
+    flexionStatus: normalizeFlexionStatus(entry.flexionStatus, entry.flexionComfort, entry.flexion),
+    sleepHours: finiteNumber(entry.sleepHours, fallback.sleepHours),
+    weightKg: finiteNumber(entry.weightKg, fallback.weightKg),
+    proteinTargetG: finiteNumber(entry.proteinTargetG, fallback.proteinTargetG),
+    confidence: finiteNumber(entry.confidence, fallback.confidence),
+    movementQuality:
+      entry.movementQuality == null ? undefined : finiteNumber(entry.movementQuality, 3),
+    trainingReadiness:
+      entry.trainingReadiness == null ? undefined : finiteNumber(entry.trainingReadiness, 3),
+    sportConfidence:
+      entry.sportConfidence == null ? undefined : finiteNumber(entry.sportConfidence, 3),
+    notes: entry.notes ?? "",
+  };
+}
+
+function normalizeEveningCheckIn(
+  entry: Partial<EveningCheckIn> | undefined,
+): EveningCheckIn | undefined {
+  if (!entry) return undefined;
+  const date = entry.date ?? todayIso();
+  const phaseId = entry.phaseId ?? "activation-early-rom";
+  const fallback = createDefaultEveningCheckIn(date, phaseId);
+  return {
+    date,
+    phaseId,
+    exercisesCompleted: entry.exercisesCompleted ?? "",
+    painDuring: finiteNumber(entry.painDuringActivity ?? entry.painDuring, fallback.painDuring),
+    painDuringActivity: finiteNumber(
+      entry.painDuringActivity ?? entry.painDuring,
+      fallback.painDuringActivity ?? fallback.painDuring,
+    ),
+    painAfter: finiteNumber(entry.painAfterActivity ?? entry.painAfter, fallback.painAfter),
+    painAfterActivity: finiteNumber(
+      entry.painAfterActivity ?? entry.painAfter,
+      fallback.painAfterActivity ?? fallback.painAfter,
+    ),
+    swellingChange: finiteNumber(entry.swellingChange, fallback.swellingChange),
+    walkingConfidence: finiteNumber(
+      entry.walkingConfidenceAfter ?? entry.walkingConfidence,
+      fallback.walkingConfidence,
+    ),
+    walkingConfidenceAfter: finiteNumber(
+      entry.walkingConfidenceAfter ?? entry.walkingConfidence,
+      fallback.walkingConfidenceAfter ?? fallback.walkingConfidence,
+    ),
+    quadActivationQuality: finiteNumber(
+      entry.quadActivationQuality,
+      fallback.quadActivationQuality,
+    ),
+    extensionResponse: normalizeRangeResponse(entry.extensionResponse),
+    flexionResponse: normalizeRangeResponse(entry.flexionResponse),
+    concerningSymptoms: entry.concerningSymptoms ?? "",
+    movementQualityAfter:
+      entry.movementQualityAfter == null ? undefined : finiteNumber(entry.movementQualityAfter, 3),
+    energyFatigue: entry.energyFatigue == null ? undefined : finiteNumber(entry.energyFatigue, 3),
+    milestones: entry.milestones ?? "",
+    todayWin: entry.todayWin,
+    notes: entry.notes ?? "",
+  };
 }
 
 function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
@@ -1800,16 +1840,27 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
     },
   );
 
+  const savedMorning = normalizeMorningCheckIn(saved.morning as LegacyMorningCheckIn | undefined);
+  const savedEvening = normalizeEveningCheckIn(saved.evening);
+  const normalizedSavedCheckIns =
+    saved.checkIns?.map((entry) => ({
+      ...entry,
+      phaseId:
+        entry.phaseId ?? entry.morning?.phaseId ?? entry.evening?.phaseId ?? activeMission.phaseId,
+      morning: normalizeMorningCheckIn(entry.morning as LegacyMorningCheckIn | undefined),
+      evening: normalizeEveningCheckIn(entry.evening),
+    })) ?? [];
+
   const checkIns =
-    saved.checkIns?.length || saved.morning || saved.evening
+    normalizedSavedCheckIns.length || savedMorning || savedEvening
       ? [
-          ...(saved.checkIns ?? []),
-          ...(saved.morning || saved.evening
+          ...normalizedSavedCheckIns,
+          ...(savedMorning || savedEvening
             ? [
                 createCheckIn(
-                  saved.morning?.date ?? saved.evening?.date ?? todayIso(),
-                  saved.morning,
-                  saved.evening,
+                  savedMorning?.date ?? savedEvening?.date ?? todayIso(),
+                  savedMorning,
+                  savedEvening,
                 ),
               ]
             : []),
@@ -1865,6 +1916,12 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
       status: isSeedPlan ? "archived" : (raw.status ?? "active"),
     };
   });
+  const recoveryIqEvents = (saved.recoveryIqEvents ?? [])
+    .map(normalizeRecoveryIqEvent)
+    .filter((event): event is RecoveryIqEvent => Boolean(event));
+  const smallWins = (saved.smallWins ?? [])
+    .map(normalizeSmallWin)
+    .filter((win): win is SmallWin => Boolean(win));
 
   return {
     ...initial,
@@ -1877,13 +1934,16 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
     athleteName: campaign.athleteName,
     surgeryDate: campaign.surgeryDate,
     campaignName: campaign.name,
+    recoveryIqXp: 0,
+    morning: savedMorning ?? initial.morning,
+    evening: savedEvening ?? initial.evening,
     checkIns,
     milestones,
     dailyCoachPlans,
-    coachNotes: saved.coachNotes ?? initial.coachNotes,
+    coachNotes: (saved.coachNotes ?? initial.coachNotes).map(normalizeCoachNote),
     athleteNotes: saved.athleteNotes ?? initial.athleteNotes,
-    recoveryIqEvents: saved.recoveryIqEvents ?? initial.recoveryIqEvents,
-    smallWins: saved.smallWins ?? initial.smallWins,
+    recoveryIqEvents,
+    smallWins,
     coachPackets: saved.coachPackets ?? initial.coachPackets,
   };
 }
@@ -1938,10 +1998,89 @@ export function usePhoenix(): PhoenixState {
 export const LEVEL_STEP = 500;
 
 export function levelFromXp(xp: number) {
-  const level = Math.floor(xp / LEVEL_STEP) + 1;
-  const intoLevel = xp % LEVEL_STEP;
+  const safeXp = Math.max(0, xp);
+  const level = Math.floor(safeXp / LEVEL_STEP) + 1;
+  const intoLevel = safeXp % LEVEL_STEP;
   const pct = (intoLevel / LEVEL_STEP) * 100;
   return { level, intoLevel, pct, toNext: LEVEL_STEP - intoLevel };
+}
+
+function recoveryIqEventId(
+  sourceType: RecoveryIqEventSourceType,
+  sourceId: string | undefined,
+  date: string,
+  title: string,
+) {
+  return `iq-${sourceType}-${slugify(sourceId || `${date}-${title}`)}`;
+}
+
+export function recoveryIqXpFromEvents(events: RecoveryIqEvent[] = []): number {
+  const total = events.reduce((sum, event) => {
+    const xp = Number.isFinite(event.xpAmount) ? event.xpAmount : 0;
+    return sum + xp;
+  }, 0);
+  return Math.max(0, total);
+}
+
+export function recoveryIqXpForState(s: Pick<PhoenixState, "recoveryIqEvents">): number {
+  return recoveryIqXpFromEvents(s.recoveryIqEvents ?? []);
+}
+
+export function recoveryIqForState(s: Pick<PhoenixState, "recoveryIqEvents">) {
+  return levelFromXp(recoveryIqXpForState(s));
+}
+
+export function createRecoveryIqEvent({
+  date,
+  sourceType,
+  sourceId,
+  title,
+  description,
+  xpAmount,
+  timestamp = new Date().toISOString(),
+}: {
+  date: string;
+  sourceType: RecoveryIqEventSourceType;
+  sourceId?: string;
+  title: string;
+  description?: string;
+  xpAmount: number;
+  timestamp?: string;
+}): RecoveryIqEvent {
+  return {
+    id: recoveryIqEventId(sourceType, sourceId, date, title),
+    date,
+    timestamp,
+    sourceType,
+    sourceId,
+    title,
+    description,
+    xpAmount,
+    createdAt: timestamp,
+  };
+}
+
+export function upsertRecoveryIqEvent(
+  events: RecoveryIqEvent[] = [],
+  event: RecoveryIqEvent,
+): RecoveryIqEvent[] {
+  const withoutDuplicate = events.filter((existing) => {
+    const sameId = existing.id === event.id;
+    const sameSource =
+      Boolean(event.sourceId) &&
+      existing.sourceType === event.sourceType &&
+      existing.sourceId === event.sourceId;
+    return !sameId && !sameSource;
+  });
+  return [...withoutDuplicate, event].sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1));
+}
+
+export function removeRecoveryIqEvent(
+  events: RecoveryIqEvent[] = [],
+  sourceType: RecoveryIqEventSourceType,
+  sourceId: string,
+): RecoveryIqEvent[] {
+  return events.filter((event) => event.sourceType !== sourceType || event.sourceId !== sourceId);
 }
 
 export function currentCampaign(s: PhoenixState): Campaign {
@@ -2083,22 +2222,72 @@ function addQuest(quests: QuestDraft[], next: QuestDraft) {
   };
 }
 
+function eveningWalkingConfidence(e: EveningCheckIn): number {
+  return e.walkingConfidenceAfter ?? e.walkingConfidence;
+}
+
+function responseWasNegative(response: RangeResponse): boolean {
+  return response === "felt_stiffer" || response === "painful_or_pinching";
+}
+
+function hasConcerningEveningSymptoms(e: EveningCheckIn | null): boolean {
+  if (!e) return false;
+  return hasConcerningNotes(`${e.concerningSymptoms} ${e.notes}`);
+}
+
 function previousEveningWasReactive(e: EveningCheckIn | null): boolean {
   if (!e) return false;
-  return e.painAfter >= 5 || e.swellingChange >= 2 || e.walkingConfidence <= 2;
+  return (
+    e.painAfter >= 5 ||
+    e.swellingChange >= 2 ||
+    eveningWalkingConfidence(e) <= 2 ||
+    responseWasNegative(e.extensionResponse) ||
+    responseWasNegative(e.flexionResponse) ||
+    hasConcerningEveningSymptoms(e)
+  );
 }
 
 function previousEveningWasStable(e: EveningCheckIn | null): boolean {
   if (!e) return false;
-  return e.painAfter <= 3 && e.swellingChange <= 0 && e.walkingConfidence >= 3;
+  return (
+    e.painAfter <= 3 &&
+    e.swellingChange <= 0 &&
+    eveningWalkingConfidence(e) >= 3 &&
+    !responseWasNegative(e.extensionResponse) &&
+    !responseWasNegative(e.flexionResponse) &&
+    !hasConcerningEveningSymptoms(e)
+  );
+}
+
+function extensionStatusIsLimited(status: ExtensionStatus): boolean {
+  return (
+    status === "slightly_limited" ||
+    status === "moderately_limited" ||
+    status === "significantly_limited"
+  );
+}
+
+function formatStatusReason(value: string): string {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function extensionQuestLabel(morning: MorningCheckIn | null, previous: EveningCheckIn | null) {
-  if (!morning) return "Extension exposure 3–5 min, only if tolerated";
-  if (morning.pain > 3 || morning.swelling >= 3 || previousEveningWasReactive(previous)) {
-    return "Gentle heel prop 3–5 min, only if tolerated";
+  if (!morning) return "Gentle extension exposure, only if tolerated";
+  if (
+    morning.pain > 3 ||
+    normalizedSwellingLevel(morning) >= 3 ||
+    previousEveningWasReactive(previous) ||
+    morning.extensionStatus === "significantly_limited"
+  ) {
+    return "Gentle extension exposure in a relaxed position, only if tolerated";
   }
-  return "Extension exposure 5–8 min, only if tolerated";
+  if (morning.extensionStatus === "reaches_neutral") {
+    return "Comfortable extension maintenance, only if tolerated";
+  }
+  return "Extension exposure, relaxed position only";
 }
 
 function addMissionQuests(
@@ -2238,20 +2427,6 @@ function addMorningSignalQuests(
     );
   }
 
-  if (morning.quadActivation < 4) {
-    addQuest(
-      quests,
-      quest(
-        "quad-activation",
-        "Quad activation sets",
-        "main",
-        15,
-        "morning-check-in",
-        "Because quad activation is below 4/5",
-      ),
-    );
-  }
-
   if (morning.walkingConfidence <= 2) {
     addQuest(
       quests,
@@ -2266,7 +2441,11 @@ function addMorningSignalQuests(
     );
   }
 
-  if (morning.extension > 2 && morning.pain < 5 && morning.swelling < 5) {
+  if (
+    extensionStatusIsLimited(morning.extensionStatus) &&
+    morning.pain < 5 &&
+    normalizedSwellingLevel(morning) < 5
+  ) {
     addQuest(
       quests,
       quest(
@@ -2275,7 +2454,7 @@ function addMorningSignalQuests(
         "main",
         20,
         "morning-check-in",
-        `Because extension is ${morning.extension}° from neutral`,
+        `Because extension status is ${formatStatusReason(morning.extensionStatus)}`,
       ),
     );
   }
@@ -2296,29 +2475,63 @@ function addMorningSignalQuests(
 }
 
 function addPreviousEveningQuests(quests: QuestDraft[], previous: EveningCheckIn | null) {
-  if (!previousEveningWasReactive(previous)) return;
-  addQuest(
-    quests,
-    quest(
-      "hold-volume",
-      "Hold volume; keep work gentle",
-      "main",
-      15,
-      "previous-evening",
-      "Because yesterday's response was reactive",
-    ),
-  );
-  addQuest(
-    quests,
-    quest(
-      "ice-elevation",
-      "Ice/elevation if swelling increases",
-      "side",
-      5,
-      "previous-evening",
-      "Because yesterday's response was reactive",
-    ),
-  );
+  if (!previous) return;
+
+  if (previousEveningWasReactive(previous)) {
+    addQuest(
+      quests,
+      quest(
+        "hold-volume",
+        "Hold volume; keep work gentle",
+        "main",
+        15,
+        "previous-evening",
+        "Because yesterday's evening response was reactive",
+      ),
+    );
+    addQuest(
+      quests,
+      quest(
+        "ice-elevation",
+        "Ice/elevation if swelling increases",
+        "side",
+        5,
+        "previous-evening",
+        "Because yesterday's evening response was reactive",
+      ),
+    );
+  }
+
+  if (previous.quadActivationQuality <= 2) {
+    addQuest(
+      quests,
+      quest(
+        "quad-activation",
+        "Gentle quad activation practice",
+        "main",
+        15,
+        "previous-evening",
+        "Because yesterday's quad activation quality was low after activation work",
+      ),
+    );
+  }
+
+  if (
+    responseWasNegative(previous.extensionResponse) ||
+    responseWasNegative(previous.flexionResponse)
+  ) {
+    addQuest(
+      quests,
+      quest(
+        "comfortable-rom-only",
+        "Comfortable ROM only; avoid painful or pinching ranges",
+        "main",
+        15,
+        "previous-evening",
+        "Because yesterday's ROM response was stiff, painful, or pinching",
+      ),
+    );
+  }
 }
 
 function addPhaseTemplateQuests(
@@ -2506,6 +2719,221 @@ function normalizeQuestForDate(
   };
 }
 
+type DashboardObjectiveGroup =
+  | "check-in"
+  | "movement"
+  | "activation_rom"
+  | "recovery_support"
+  | "evening_response";
+
+function normalizedQuestText(quest: Pick<DailyQuest, "id" | "label" | "reason">): string {
+  return `${quest.id} ${quest.label} ${quest.reason}`.toLowerCase();
+}
+
+function dashboardObjectiveGroupForQuest(quest: DailyQuest): DashboardObjectiveGroup {
+  const text = normalizedQuestText(quest);
+  if (quest.id === "morning-check-in" || text.includes("morning check")) return "check-in";
+  if (quest.id === "evening-check-in" || text.includes("evening check")) return "evening_response";
+  if (
+    text.includes("walk") ||
+    text.includes("gait") ||
+    text.includes("movement") ||
+    text.includes("ankle pump") ||
+    text.includes("step")
+  ) {
+    return "movement";
+  }
+  if (
+    text.includes("swelling") ||
+    text.includes("elevation") ||
+    text.includes("ice") ||
+    text.includes("protein") ||
+    text.includes("hydration") ||
+    text.includes("sleep") ||
+    text.includes("rest") ||
+    text.includes("recover") ||
+    text.includes("hold volume")
+  ) {
+    return "recovery_support";
+  }
+  return "activation_rom";
+}
+
+function uniqueDetails(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function groupDone(groupId: string, childQuests: DailyQuest[], fallbackDone = false): boolean {
+  if (childQuests.length === 0) return fallbackDone;
+  if (groupId === "morning-check-in" || groupId === "evening-check-in") {
+    return childQuests.some((quest) => quest.done);
+  }
+  return childQuests.every((quest) => quest.done);
+}
+
+function dashboardObjective(
+  plan: DailyCoachPlan,
+  group: DashboardObjectiveGroup,
+  childQuests: DailyQuest[],
+): DailyQuest {
+  const fromActiveCoachPlan = plan.status === "active" && plan.id !== `generated-plan-${plan.date}`;
+  const source: QuestSource = fromActiveCoachPlan ? "daily-coach-plan" : "phase";
+  const sourceLabel = fromActiveCoachPlan ? "Generated from active Coach Plan" : undefined;
+  const relatedQuestIds = childQuests.map((quest) => quest.id);
+  const childDetails = childQuests
+    .filter((quest) => quest.id !== "morning-check-in" && quest.id !== "evening-check-in")
+    .flatMap((quest) => [quest.label, ...(quest.details ?? [])]);
+
+  switch (group) {
+    case "check-in":
+      return {
+        id: "morning-check-in",
+        date: plan.date,
+        label: "Morning baseline check-in",
+        title: "Morning baseline check-in",
+        done: groupDone("morning-check-in", childQuests),
+        status: groupDone("morning-check-in", childQuests) ? "complete" : "pending",
+        xp: 10,
+        kind: "main",
+        category: "main",
+        source,
+        sourceLabel,
+        reason: "Purpose: establish starting state.",
+        details: ["Pain, swelling, walking confidence, extension status, flexion comfort, sleep."],
+        relatedQuestIds,
+        phaseId: plan.phaseId,
+        planId: fromActiveCoachPlan ? plan.id : undefined,
+      };
+    case "movement":
+      return {
+        id: "gentle-movement-exposure",
+        date: plan.date,
+        label: "Gentle movement exposure",
+        title: "Gentle movement exposure",
+        done: groupDone("gentle-movement-exposure", childQuests),
+        status: groupDone("gentle-movement-exposure", childQuests) ? "complete" : "pending",
+        xp: 15,
+        kind: "main",
+        category: "main",
+        source,
+        sourceLabel,
+        reason: "Purpose: short supported walks and easy movement.",
+        details: uniqueDetails([
+          "Prioritize clean gait, comfort, and confidence. No chasing steps.",
+          ...childDetails,
+        ]),
+        relatedQuestIds,
+        phaseId: plan.phaseId,
+        planId: fromActiveCoachPlan ? plan.id : undefined,
+      };
+    case "activation_rom":
+      return {
+        id: "activation-rom-work",
+        date: plan.date,
+        label: "Activation + ROM work",
+        title: "Activation + ROM work",
+        done: groupDone("activation-rom-work", childQuests),
+        status: groupDone("activation-rom-work", childQuests) ? "complete" : "pending",
+        xp: 20,
+        kind: "main",
+        category: "main",
+        source,
+        sourceLabel,
+        reason: fromActiveCoachPlan
+          ? "Purpose: complete today's prescribed activation and gentle ROM work from the active Daily Coach Plan."
+          : "Purpose: complete today's conservative activation and gentle ROM work.",
+        details: uniqueDetails([
+          ...(childDetails.length
+            ? childDetails
+            : ["Quad sets", "Gentle extension exposure", "Heel slides if prescribed/tolerated"]),
+        ]),
+        relatedQuestIds,
+        phaseId: plan.phaseId,
+        planId: fromActiveCoachPlan ? plan.id : undefined,
+      };
+    case "recovery_support":
+      return {
+        id: "recovery-support",
+        date: plan.date,
+        label: "Recovery support",
+        title: "Recovery support",
+        done: groupDone("recovery-support", childQuests),
+        status: groupDone("recovery-support", childQuests) ? "complete" : "pending",
+        xp: 15,
+        kind: "main",
+        category: "main",
+        source,
+        sourceLabel,
+        reason: "Purpose: support healing and avoid irritation.",
+        details: uniqueDetails([
+          "Comfort-based swelling control",
+          "Protein target",
+          "Hydration",
+          "Rest / elevation as needed",
+          ...childDetails,
+        ]),
+        relatedQuestIds,
+        phaseId: plan.phaseId,
+        planId: fromActiveCoachPlan ? plan.id : undefined,
+      };
+    case "evening_response":
+      return {
+        id: "evening-check-in",
+        date: plan.date,
+        label: "Evening response check-in",
+        title: "Evening response check-in",
+        done: groupDone("evening-check-in", childQuests),
+        status: groupDone("evening-check-in", childQuests) ? "complete" : "pending",
+        xp: 10,
+        kind: "main",
+        category: "main",
+        source,
+        sourceLabel,
+        reason: "Purpose: record how the knee responded to today's work.",
+        details: [
+          "Pain during / after",
+          "Swelling change",
+          "Walking response",
+          "Quad activation quality",
+          "Extension response",
+          "Flexion response",
+        ],
+        relatedQuestIds,
+        phaseId: plan.phaseId,
+        planId: fromActiveCoachPlan ? plan.id : undefined,
+      };
+  }
+}
+
+export function groupCoachPlanQuestsIntoDashboardObjectives(plan: DailyCoachPlan): DailyQuest[] {
+  const groups: Record<DashboardObjectiveGroup, DailyQuest[]> = {
+    "check-in": [],
+    movement: [],
+    activation_rom: [],
+    recovery_support: [],
+    evening_response: [],
+  };
+
+  plan.quests.forEach((quest) => {
+    groups[dashboardObjectiveGroupForQuest(quest)].push(quest);
+  });
+
+  return (
+    ["check-in", "movement", "activation_rom", "recovery_support", "evening_response"] as const
+  )
+    .map((group) => dashboardObjective(plan, group, groups[group]))
+    .slice(0, 5);
+}
+
 export function dailyCoachPlanForDate(s: PhoenixState, isoDate = todayIso()): DailyCoachPlan {
   const importedPlan = activeDailyCoachPlanForDate(s, isoDate);
   if (importedPlan) {
@@ -2574,7 +3002,14 @@ export function activeDailyCoachPlanForDate(
 }
 
 export function dailyQuestsForDate(s: PhoenixState, isoDate = todayIso()): DailyQuest[] {
-  return dailyCoachPlanForDate(s, isoDate).quests;
+  const plan = dailyCoachPlanForDate(s, isoDate);
+  const phaseId = plan.phaseId ?? phaseForDate(s, isoDate).id;
+  const shouldGroup =
+    phaseId === "acute-response" ||
+    phaseId === "activation-early-rom" ||
+    Boolean(activeDailyCoachPlanForDate(s, isoDate));
+  const quests = shouldGroup ? groupCoachPlanQuestsIntoDashboardObjectives(plan) : plan.quests;
+  return quests.map((quest) => normalizeQuestForDate(s, isoDate, quest));
 }
 
 export type DailyCoachPlanImportResult =
@@ -2700,6 +3135,7 @@ function normalizeImportedQuest(
     typeof record.done === "boolean"
       ? record.done
       : status === "complete" || status === "completed";
+  const details = stringArray(record.details);
 
   return {
     id: stringValue(record.id) || `quest-${index + 1}-${slugify(label)}`,
@@ -2713,6 +3149,7 @@ function normalizeImportedQuest(
     category: kind,
     source: "daily-coach-plan",
     reason: stringValue(record.reason) || "Imported from Daily Coach Plan",
+    details: details.length ? details : undefined,
     phaseId: PHASE_CONFIGS.some((phase) => phase.id === record.phaseId)
       ? (record.phaseId as PhaseId)
       : undefined,
@@ -2866,6 +3303,18 @@ export function activateDailyCoachPlan(plan: DailyCoachPlan) {
       ],
       questCompletions: nextQuestCompletions,
       todayQuests: plan.date === todayIso() ? quests : prev.todayQuests,
+      recoveryIqEvents: upsertRecoveryIqEvent(
+        prev.recoveryIqEvents,
+        createRecoveryIqEvent({
+          date: plan.date,
+          sourceType: "coach_plan",
+          sourceId: `coach-plan:${plan.id}`,
+          title: "Daily Coach Plan imported",
+          description: plan.primaryFocus,
+          xpAmount: 25,
+          timestamp: activatedPlan.importedAt,
+        }),
+      ),
     };
   });
 }
@@ -2921,49 +3370,67 @@ export function allEveningCheckIns(s: PhoenixState): EveningCheckIn[] {
 }
 
 export function saveMorningCheckIn(entry: MorningCheckIn) {
-  setState((prev) => ({
-    ...prev,
-    morning:
-      entry.date === todayIso()
-        ? { ...entry, phaseId: entry.phaseId ?? currentPhase(prev).id }
-        : prev.morning,
-    checkIns: upsertCheckIn(prev.checkIns ?? [], {
-      id: `check-in-${entry.date}`,
-      date: entry.date,
-      phaseId: entry.phaseId ?? currentPhase(prev).id,
-      morning: { ...entry, phaseId: entry.phaseId ?? currentPhase(prev).id },
-    }),
-    history: {
-      ...prev.history,
-      morning: upsertByDate(prev.history.morning, {
-        ...entry,
-        phaseId: entry.phaseId ?? currentPhase(prev).id,
+  setState((prev) => {
+    const phaseId = entry.phaseId ?? currentPhase(prev).id;
+    const savedEntry = { ...entry, phaseId };
+    return {
+      ...prev,
+      morning: entry.date === todayIso() ? savedEntry : prev.morning,
+      checkIns: upsertCheckIn(prev.checkIns ?? [], {
+        id: `check-in-${entry.date}`,
+        date: entry.date,
+        phaseId,
+        morning: savedEntry,
       }),
-    },
-  }));
+      history: {
+        ...prev.history,
+        morning: upsertByDate(prev.history.morning, savedEntry),
+      },
+      recoveryIqEvents: upsertRecoveryIqEvent(
+        prev.recoveryIqEvents,
+        createRecoveryIqEvent({
+          date: entry.date,
+          sourceType: "check_in",
+          sourceId: `morning-check-in:${entry.date}`,
+          title: "Morning check-in completed",
+          description: "Daily evidence was logged before choosing today's workload.",
+          xpAmount: 10,
+        }),
+      ),
+    };
+  });
 }
 
 export function saveEveningCheckIn(entry: EveningCheckIn) {
-  setState((prev) => ({
-    ...prev,
-    evening:
-      entry.date === todayIso()
-        ? { ...entry, phaseId: entry.phaseId ?? currentPhase(prev).id }
-        : prev.evening,
-    checkIns: upsertCheckIn(prev.checkIns ?? [], {
-      id: `check-in-${entry.date}`,
-      date: entry.date,
-      phaseId: entry.phaseId ?? currentPhase(prev).id,
-      evening: { ...entry, phaseId: entry.phaseId ?? currentPhase(prev).id },
-    }),
-    history: {
-      ...prev.history,
-      evening: upsertByDate(prev.history.evening, {
-        ...entry,
-        phaseId: entry.phaseId ?? currentPhase(prev).id,
+  setState((prev) => {
+    const phaseId = entry.phaseId ?? currentPhase(prev).id;
+    const savedEntry = { ...entry, phaseId };
+    return {
+      ...prev,
+      evening: entry.date === todayIso() ? savedEntry : prev.evening,
+      checkIns: upsertCheckIn(prev.checkIns ?? [], {
+        id: `check-in-${entry.date}`,
+        date: entry.date,
+        phaseId,
+        evening: savedEntry,
       }),
-    },
-  }));
+      history: {
+        ...prev.history,
+        evening: upsertByDate(prev.history.evening, savedEntry),
+      },
+      recoveryIqEvents: upsertRecoveryIqEvent(
+        prev.recoveryIqEvents,
+        createRecoveryIqEvent({
+          date: entry.date,
+          sourceType: "check_in",
+          sourceId: `evening-check-in:${entry.date}`,
+          title: "Evening check-in completed",
+          description: "Response data was logged for tomorrow's recovery decision.",
+          xpAmount: 10,
+        }),
+      ),
+    };
+  });
 }
 
 /** direction: "lower-better" (pain, swelling) or "higher-better" (confidence, extension*) */
@@ -3057,12 +3524,19 @@ function swellingPairedWithNegativeSignals(
     (current.movementQuality != null && current.movementQuality <= 2) ||
     (previousEveningEntry?.movementQualityAfter != null &&
       previousEveningEntry.movementQualityAfter <= 2);
+  const previousEveningNegative =
+    previousEveningEntry != null &&
+    (eveningWalkingConfidence(previousEveningEntry) <= 2 ||
+      responseWasNegative(previousEveningEntry.extensionResponse) ||
+      responseWasNegative(previousEveningEntry.flexionResponse) ||
+      hasConcerningEveningSymptoms(previousEveningEntry));
 
   return (
     painIncrease >= 2 ||
     current.pain >= 4 ||
     walkingConfidenceDrop >= 1 ||
     current.walkingConfidence <= 2 ||
+    previousEveningNegative ||
     movementQualityLow ||
     hasConcerningNotes(current.notes)
   );
@@ -3271,21 +3745,6 @@ function todaysWinFromRules(
         label: `Walking confidence improved by +${current.walkingConfidence - previous.walkingConfidence}`,
         detail: "Gait is trending the right direction.",
       };
-    if (rules.has("quad-activation-improved") && current.quadActivation > previous.quadActivation)
-      return {
-        label: `Quad activation improved by +${current.quadActivation - previous.quadActivation}`,
-        detail: "Neuromuscular control is consolidating.",
-      };
-    if (rules.has("extension-closer-to-neutral") && current.extension < previous.extension)
-      return {
-        label: `Extension closer to neutral by ${previous.extension - current.extension}°`,
-        detail: "Range is improving without chasing intensity.",
-      };
-    if (rules.has("flexion-improved") && current.flexion > previous.flexion)
-      return {
-        label: `Flexion improved by +${current.flexion - previous.flexion}°`,
-        detail: "Comfortable range is opening up.",
-      };
     if (rules.has("pain-decreased") && current.pain < previous.pain)
       return {
         label: `Pain dropped by ${previous.pain - current.pain}`,
@@ -3298,6 +3757,26 @@ function todaysWinFromRules(
       };
     if (rules.has("swelling-stable") && current.swelling === previous.swelling)
       return { label: "Swelling stayed stable", detail: "Maintenance is a win." };
+  }
+  const evening = s && isoDate ? getEveningForDate(s, isoDate) : null;
+  if (
+    rules.has("rom-response-stable") &&
+    evening &&
+    evening.painAfter <= 3 &&
+    evening.swellingChange <= 0 &&
+    (evening.extensionResponse === "felt_same" || evening.extensionResponse === "felt_better") &&
+    (evening.flexionResponse === "felt_same" || evening.flexionResponse === "felt_better")
+  ) {
+    return {
+      label: "ROM response stayed stable",
+      detail: "Extension and flexion work stayed inside a tolerable range.",
+    };
+  }
+  if (rules.has("quad-activation-quality-logged") && evening) {
+    return {
+      label: "Quad activation quality logged",
+      detail: "The activation signal was checked after the day's work.",
+    };
   }
   if (rules.has("main-quests-completed") && s && isoDate && mainQuestsCompleteForDate(s, isoDate))
     return { label: "Main quests complete", detail: "The configured work is done for today." };
