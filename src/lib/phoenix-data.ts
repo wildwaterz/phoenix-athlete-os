@@ -317,13 +317,59 @@ export type QuestType =
 export type ProgressionType = "load" | "skill_control" | "rom" | "walking" | "recovery";
 
 export type PrescribedTaskCategory =
-  | "check_in"
-  | "movement"
+  | "check_in_morning"
+  | "check_in_evening"
+  | "walking"
+  | "gait"
+  | "activation"
+  | "rom_extension"
+  | "rom_flexion"
+  | "recovery_basics"
+  | "nutrition"
+  | "hydration"
+  | "sleep"
+  | "swelling_management"
+  | "skill_test";
+
+export type DashboardObjectiveCategory =
+  | "morning_check_in"
+  | "movement_exposure"
   | "activation"
   | "rom"
-  | "recovery"
-  | "nutrition"
-  | "reflection";
+  | "recovery_basics"
+  | "evening_check_in"
+  | "skill_test"
+  | "milestone_watch";
+
+export type DashboardObjectiveId = DashboardObjectiveCategory;
+
+export interface DashboardObjective {
+  id: DashboardObjectiveId;
+  title: string;
+  purpose: string;
+  xp: number;
+  category: DashboardObjectiveCategory;
+  taskIds: string[];
+}
+
+export type CanonicalExerciseId =
+  | "morning_baseline_check_in"
+  | "evening_response_check_in"
+  | "supported_walk"
+  | "quad_sets"
+  | "straight_leg_raise"
+  | "heel_slides"
+  | "heel_prop_extension"
+  | "protein_target"
+  | "hydration"
+  | "sleep_target"
+  | "pacing_rest"
+  | "elevation_if_symptomatic"
+  | "ice_if_symptomatic"
+  | (string & {});
+
+export type TaskIntent = "check_in" | "build" | "maintain" | "recover" | "fuel" | "test";
+export type TaskPriority = "required" | "optional";
 
 export interface PrescribedTaskPrescription {
   sets?: number;
@@ -351,10 +397,14 @@ export interface PrescribedTaskCompletion {
 
 export interface PrescribedTask {
   id: string;
+  canonicalExerciseId: CanonicalExerciseId;
   title: string;
   category: PrescribedTaskCategory;
+  parentObjectiveId: DashboardObjectiveId;
   prescription: PrescribedTaskPrescription;
   stopRules: string[];
+  taskIntent: TaskIntent;
+  taskPriority: TaskPriority;
   completion: PrescribedTaskCompletion;
 }
 
@@ -410,11 +460,14 @@ export interface SkillTest {
 }
 
 export type DashboardObjectiveGroup =
-  | "check-in"
-  | "movement"
-  | "activation_rom"
-  | "recovery_support"
-  | "evening_response";
+  | "morning_check_in"
+  | "movement_exposure"
+  | "activation"
+  | "rom"
+  | "recovery_basics"
+  | "evening_check_in"
+  | "skill_test"
+  | "milestone_watch";
 
 export interface Quest {
   id: string;
@@ -3380,9 +3433,9 @@ function normalizeQuestForDate(
     questType: quest.questType ?? (quest.id.includes("check-in") ? "check_in" : "required_action"),
     progressionType:
       quest.progressionType ??
-      (dashboardObjectiveGroupForQuest(quest as DailyQuest) === "movement"
+      (dashboardObjectiveGroupForQuest(quest as DailyQuest) === "movement_exposure"
         ? "walking"
-        : dashboardObjectiveGroupForQuest(quest as DailyQuest) === "recovery_support"
+        : dashboardObjectiveGroupForQuest(quest as DailyQuest) === "recovery_basics"
           ? "recovery"
           : "skill_control"),
   };
@@ -3392,10 +3445,367 @@ function normalizedQuestText(quest: Pick<DailyQuest, "id" | "label" | "reason">)
   return `${quest.id} ${quest.label} ${quest.reason}`.toLowerCase();
 }
 
+const DASHBOARD_OBJECTIVE_ORDER: DashboardObjectiveId[] = [
+  "morning_check_in",
+  "movement_exposure",
+  "activation",
+  "rom",
+  "recovery_basics",
+  "evening_check_in",
+];
+
+const DASHBOARD_OBJECTIVE_DEFINITIONS: Record<
+  DashboardObjectiveId,
+  Omit<DashboardObjective, "taskIds">
+> = {
+  morning_check_in: {
+    id: "morning_check_in",
+    title: "Morning baseline check-in",
+    purpose: "Establish starting state.",
+    xp: 10,
+    category: "morning_check_in",
+  },
+  movement_exposure: {
+    id: "movement_exposure",
+    title: "Clean movement exposures",
+    purpose: "Short supported walks and clean gait practice without chasing steps.",
+    xp: 15,
+    category: "movement_exposure",
+  },
+  activation: {
+    id: "activation",
+    title: "Quad activation work",
+    purpose: "Complete today's prescribed activation work with clean control.",
+    xp: 20,
+    category: "activation",
+  },
+  rom: {
+    id: "rom",
+    title: "Gentle ROM work",
+    purpose: "Complete prescribed extension and flexion exposure without forcing range.",
+    xp: 20,
+    category: "rom",
+  },
+  recovery_basics: {
+    id: "recovery_basics",
+    title: "Recovery basics",
+    purpose: "Support healing and avoid irritation.",
+    xp: 15,
+    category: "recovery_basics",
+  },
+  evening_check_in: {
+    id: "evening_check_in",
+    title: "Evening response check-in",
+    purpose: "Record how the knee responded to today's work.",
+    xp: 10,
+    category: "evening_check_in",
+  },
+  skill_test: {
+    id: "skill_test",
+    title: "Optional skill test",
+    purpose: "Controlled provisional check only when criteria are met.",
+    xp: 0,
+    category: "skill_test",
+  },
+  milestone_watch: {
+    id: "milestone_watch",
+    title: "Milestone watch",
+    purpose: "Track evidence needed before the next unlock.",
+    xp: 0,
+    category: "milestone_watch",
+  },
+};
+
+const TASK_CATEGORY_TO_OBJECTIVE: Record<PrescribedTaskCategory, DashboardObjectiveId> = {
+  check_in_morning: "morning_check_in",
+  check_in_evening: "evening_check_in",
+  walking: "movement_exposure",
+  gait: "movement_exposure",
+  activation: "activation",
+  rom_extension: "rom",
+  rom_flexion: "rom",
+  recovery_basics: "recovery_basics",
+  nutrition: "recovery_basics",
+  hydration: "recovery_basics",
+  sleep: "recovery_basics",
+  swelling_management: "recovery_basics",
+  skill_test: "skill_test",
+};
+
+type CanonicalTaskDefinition = {
+  canonicalExerciseId: CanonicalExerciseId;
+  title: string;
+  category: PrescribedTaskCategory;
+  parentObjectiveId: DashboardObjectiveId;
+  prescription: PrescribedTaskPrescription;
+  stopRules: string[];
+  taskIntent: TaskIntent;
+  taskPriority: TaskPriority;
+};
+
+type NormalizeCoachPlanContext = {
+  state?: PhoenixState;
+  date?: string;
+  includeDefaults?: boolean;
+  source?: "active" | "generated";
+};
+
+function extensionReachedNeutralForContext(context: NormalizeCoachPlanContext): boolean {
+  if (!context.state || !context.date) return false;
+  return getMorningForDate(context.state, context.date)?.extensionStatus === "reaches_neutral";
+}
+
+function canonicalTaskDefinition(
+  canonicalExerciseId: CanonicalExerciseId,
+  context: NormalizeCoachPlanContext = {},
+): CanonicalTaskDefinition | null {
+  const extensionNeutral = extensionReachedNeutralForContext(context);
+  const definitions: Record<string, CanonicalTaskDefinition> = {
+    morning_baseline_check_in: {
+      canonicalExerciseId: "morning_baseline_check_in",
+      title: "Morning baseline check-in",
+      category: "check_in_morning",
+      parentObjectiveId: "morning_check_in",
+      prescription: {
+        frequency: "Once before choosing today's workload",
+        qualityTarget:
+          "Baseline captures pain, swelling, walking confidence, extension, flexion, sleep, and notes.",
+      },
+      stopRules: [],
+      taskIntent: "check_in",
+      taskPriority: "required",
+    },
+    evening_response_check_in: {
+      canonicalExerciseId: "evening_response_check_in",
+      title: "Evening response check-in",
+      category: "check_in_evening",
+      parentObjectiveId: "evening_check_in",
+      prescription: {
+        frequency: "Once after today's work",
+        qualityTarget:
+          "Record adherence, pain during/after, swelling change, gait response, activation quality, and ROM response.",
+      },
+      stopRules: [],
+      taskIntent: "check_in",
+      taskPriority: "required",
+    },
+    supported_walk: {
+      canonicalExerciseId: "supported_walk",
+      title: "Supported walk",
+      category: "walking",
+      parentObjectiveId: "movement_exposure",
+      prescription: {
+        durationMinutes: 3,
+        frequency: "2-4 short exposures today",
+        effortTarget: "2-3/10 effort",
+        qualityTarget: "Clean supported gait, comfort, and confidence. No chasing steps.",
+      },
+      stopRules: ["Stop if gait worsens, confidence drops, or pain rises above 4/10."],
+      taskIntent: "build",
+      taskPriority: "required",
+    },
+    quad_sets: {
+      canonicalExerciseId: "quad_sets",
+      title: "Quad sets",
+      category: "activation",
+      parentObjectiveId: "activation",
+      prescription: {
+        sets: 3,
+        reps: 10,
+        holdSeconds: 5,
+        frequency: "1 session today",
+        effortTarget: "5-6/10 effort",
+        qualityTarget: "Repeatable contraction with no pain spike. Rest fully between reps.",
+        rangeInstruction: "Comfortable knee position only.",
+      },
+      stopRules: ["Stop if pain rises above 4/10 or contraction quality fades sharply."],
+      taskIntent: "build",
+      taskPriority: "required",
+    },
+    straight_leg_raise: {
+      canonicalExerciseId: "straight_leg_raise",
+      title: "Straight leg raise",
+      category: "skill_test",
+      parentObjectiveId: "skill_test",
+      prescription: {
+        sets: 1,
+        reps: 5,
+        frequency: "Only if prescribed or testable",
+        effortTarget: "No load",
+        qualityTarget: "Clean reps with no lag, guarding, pain, or irritation.",
+      },
+      stopRules: ["Stop if lag, pain, guarding, or irritation appears."],
+      taskIntent: "test",
+      taskPriority: "optional",
+    },
+    heel_slides: {
+      canonicalExerciseId: "heel_slides",
+      title: "Heel slides",
+      category: "rom_flexion",
+      parentObjectiveId: "rom",
+      prescription: {
+        sets: 2,
+        reps: 10,
+        frequency: "1-2 sets today",
+        effortTarget: "Easy range only",
+        qualityTarget: "Easy flexion exposure, not max range.",
+        rangeInstruction: "Comfortable range only. No strap pulling and no forcing end range.",
+      },
+      stopRules: ["Stop if flexion causes sharp pain, pinching, or swelling response."],
+      taskIntent: "build",
+      taskPriority: "required",
+    },
+    heel_prop_extension: {
+      canonicalExerciseId: "heel_prop_extension",
+      title: extensionNeutral ? "Heel prop extension maintenance" : "Heel prop extension exposure",
+      category: "rom_extension",
+      parentObjectiveId: "rom",
+      prescription: {
+        sets: extensionNeutral ? 1 : 2,
+        durationMinutes: extensionNeutral ? 3 : 5,
+        frequency: extensionNeutral
+          ? "Optional only if knee feels stiff or not relaxed neutral"
+          : "1-2 relaxed exposures today",
+        effortTarget: "Passive only",
+        qualityTarget: extensionNeutral
+          ? "Maintain relaxed neutral extension without forcing."
+          : "Build relaxed extension tolerance without guarding.",
+        rangeInstruction: "No pushing, no forced end range. Stop before sharp pain or pinching.",
+      },
+      stopRules: ["Stop if sharp pain, pinching, or worse walking follows the exposure."],
+      taskIntent: extensionNeutral ? "maintain" : "build",
+      taskPriority: extensionNeutral ? "optional" : "required",
+    },
+    protein_target: {
+      canonicalExerciseId: "protein_target",
+      title: "Protein target",
+      category: "nutrition",
+      parentObjectiveId: "recovery_basics",
+      prescription: {
+        frequency: "Across the day",
+        qualityTarget: "Hit today's protein target.",
+      },
+      stopRules: [],
+      taskIntent: "fuel",
+      taskPriority: "required",
+    },
+    hydration: {
+      canonicalExerciseId: "hydration",
+      title: "Hydration",
+      category: "hydration",
+      parentObjectiveId: "recovery_basics",
+      prescription: {
+        frequency: "Across the day",
+        qualityTarget: "Keep fluids steady; do not wait until evening to catch up.",
+      },
+      stopRules: [],
+      taskIntent: "recover",
+      taskPriority: "required",
+    },
+    sleep_target: {
+      canonicalExerciseId: "sleep_target",
+      title: "Sleep target",
+      category: "sleep",
+      parentObjectiveId: "recovery_basics",
+      prescription: {
+        frequency: "Tonight",
+        qualityTarget: "Protect sleep window for tissue recovery.",
+      },
+      stopRules: [],
+      taskIntent: "recover",
+      taskPriority: "optional",
+    },
+    pacing_rest: {
+      canonicalExerciseId: "pacing_rest",
+      title: "Pacing / rest",
+      category: "recovery_basics",
+      parentObjectiveId: "recovery_basics",
+      prescription: {
+        frequency: "Between activity exposures",
+        effortTarget: "Comfort-based only",
+        qualityTarget: "Avoid stacking irritation.",
+      },
+      stopRules: ["Reduce activity if pain, swelling, or gait quality worsens."],
+      taskIntent: "recover",
+      taskPriority: "optional",
+    },
+    elevation_if_symptomatic: {
+      canonicalExerciseId: "elevation_if_symptomatic",
+      title: "Elevation if symptomatic",
+      category: "swelling_management",
+      parentObjectiveId: "recovery_basics",
+      prescription: {
+        durationMinutes: 10,
+        frequency: "Only if knee feels full or irritated",
+        effortTarget: "Comfort-based only",
+        qualityTarget: "Settle symptoms without chasing a perfect swelling score.",
+      },
+      stopRules: ["Stop any strategy that increases pain, numbness, or concerning symptoms."],
+      taskIntent: "recover",
+      taskPriority: "optional",
+    },
+    ice_if_symptomatic: {
+      canonicalExerciseId: "ice_if_symptomatic",
+      title: "Ice if symptomatic and allowed",
+      category: "swelling_management",
+      parentObjectiveId: "recovery_basics",
+      prescription: {
+        durationMinutes: 10,
+        frequency: "Only if symptomatic and allowed",
+        effortTarget: "Comfort-based only",
+        qualityTarget: "Symptom support only; do not use ice to justify more volume.",
+      },
+      stopRules: ["Do not ice if contraindicated or if skin sensation is altered."],
+      taskIntent: "recover",
+      taskPriority: "optional",
+    },
+  };
+  return definitions[canonicalExerciseId] ?? null;
+}
+
+function canonicalKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function canonicalExerciseIdFromText(value: string): CanonicalExerciseId | null {
+  const text = canonicalKey(value);
+  if (!text) return null;
+  if (text.includes("morning") && text.includes("check")) return "morning_baseline_check_in";
+  if (text.includes("evening") && text.includes("check")) return "evening_response_check_in";
+  if (text.includes("quad activation") || text.includes("quad set")) return "quad_sets";
+  if (text.includes("straight leg raise") || text.includes("slr")) return "straight_leg_raise";
+  if (text.includes("heel slide") || text.includes("flexion exposure")) return "heel_slides";
+  if (
+    text.includes("heel prop") ||
+    text.includes("extension exposure") ||
+    text.includes("extension maintenance")
+  )
+    return "heel_prop_extension";
+  if (
+    text.includes("supported walk") ||
+    text.includes("supported walking") ||
+    text.includes("short walking") ||
+    text.includes("walking practice") ||
+    text.includes("gait practice")
+  )
+    return "supported_walk";
+  if (text.includes("protein")) return "protein_target";
+  if (text.includes("hydration") || text.includes("hydrate")) return "hydration";
+  if (text.includes("sleep")) return "sleep_target";
+  if (text.includes("elevation") || text.includes("elevate")) return "elevation_if_symptomatic";
+  if (text.includes("ice")) return "ice_if_symptomatic";
+  if (text.includes("rest") || text.includes("pacing")) return "pacing_rest";
+  return null;
+}
+
 function dashboardObjectiveGroupForQuest(quest: DailyQuest): DashboardObjectiveGroup {
+  if (quest.objectiveGroup) return quest.objectiveGroup;
   const text = normalizedQuestText(quest);
-  if (quest.id === "morning-check-in" || text.includes("morning check")) return "check-in";
-  if (quest.id === "evening-check-in" || text.includes("evening check")) return "evening_response";
+  if (quest.id === "morning-check-in" || text.includes("morning check")) return "morning_check_in";
+  if (quest.id === "evening-check-in" || text.includes("evening check")) return "evening_check_in";
   if (
     text.includes("walk") ||
     text.includes("gait") ||
@@ -3403,7 +3813,7 @@ function dashboardObjectiveGroupForQuest(quest: DailyQuest): DashboardObjectiveG
     text.includes("ankle pump") ||
     text.includes("step")
   ) {
-    return "movement";
+    return "movement_exposure";
   }
   if (
     text.includes("swelling") ||
@@ -3416,9 +3826,10 @@ function dashboardObjectiveGroupForQuest(quest: DailyQuest): DashboardObjectiveG
     text.includes("recover") ||
     text.includes("hold volume")
   ) {
-    return "recovery_support";
+    return "recovery_basics";
   }
-  return "activation_rom";
+  if (text.includes("rom") || text.includes("extension") || text.includes("flexion")) return "rom";
+  return "activation";
 }
 
 function uniqueDetails(values: string[]): string[] {
@@ -3434,257 +3845,335 @@ function uniqueDetails(values: string[]): string[] {
     });
 }
 
-function groupDone(groupId: string, childQuests: DailyQuest[], fallbackDone = false): boolean {
-  const childTasks = childQuests.flatMap((quest) => quest.prescribedTasks ?? []);
-  if (childTasks.length > 0) return childTasks.every(taskIsResolved);
-  if (childQuests.length === 0) return fallbackDone;
-  if (groupId === "morning-check-in" || groupId === "evening-check-in") {
-    return childQuests.some((quest) => quest.done);
-  }
-  return childQuests.every((quest) => quest.done);
-}
-
-function defaultTasksForObjective(group: DashboardObjectiveGroup): PrescribedTask[] {
-  const task = (id: string, title: string, category: PrescribedTaskCategory): PrescribedTask => {
-    const defaults = prescribedTaskDefaults(id, title, category);
-    return {
-      id,
-      title,
-      category: defaults.category,
-      prescription: defaults.prescription,
-      stopRules: defaults.stopRules,
-      completion: defaultTaskCompletion(),
-    };
+function defaultTaskForCanonicalExerciseId(
+  canonicalExerciseId: CanonicalExerciseId,
+  context: NormalizeCoachPlanContext = {},
+): PrescribedTask {
+  const definition =
+    canonicalTaskDefinition(canonicalExerciseId, context) ??
+    canonicalTaskDefinition("pacing_rest", context)!;
+  return {
+    id: `task-${definition.canonicalExerciseId}`,
+    canonicalExerciseId: definition.canonicalExerciseId,
+    title: definition.title,
+    category: definition.category,
+    parentObjectiveId: definition.parentObjectiveId,
+    prescription: definition.prescription,
+    stopRules: definition.stopRules,
+    taskIntent: definition.taskIntent,
+    taskPriority: definition.taskPriority,
+    completion: defaultTaskCompletion(),
   };
-
-  if (group === "check-in") {
-    return [task("task-morning-baseline-check-in", "Morning baseline check-in", "check_in")];
-  }
-  if (group === "movement") {
-    return [task("task-supported-walking-exposure", "Supported walking exposure", "movement")];
-  }
-  if (group === "activation_rom") {
-    return [
-      task("task-quad-sets", "Quad sets", "activation"),
-      task("task-gentle-heel-prop", "Gentle heel prop", "rom"),
-      task("task-heel-slides", "Heel slides", "rom"),
-    ];
-  }
-  if (group === "recovery_support") {
-    return [
-      task("task-comfort-swelling-control", "Comfort-based swelling control", "recovery"),
-      task("task-protein-target", "Protein target", "nutrition"),
-      task("task-hydration-rest", "Hydration and rest", "recovery"),
-    ];
-  }
-  return [task("task-evening-response-check-in", "Evening response check-in", "reflection")];
 }
 
-function tasksForDashboardObjective(
-  group: DashboardObjectiveGroup,
-  childQuests: DailyQuest[],
+function defaultTasksForObjective(
+  objectiveId: DashboardObjectiveId,
+  context: NormalizeCoachPlanContext = {},
 ): PrescribedTask[] {
-  const tasks = childQuests.flatMap((quest, index) =>
-    quest.prescribedTasks?.length ? quest.prescribedTasks : [prescribedTaskFromQuest(quest, index)],
-  );
-  const selected = tasks.length ? tasks : defaultTasksForObjective(group);
-  const byId = new Map<string, PrescribedTask>();
-  selected.forEach((task) => byId.set(task.id, task));
-  return [...byId.values()];
+  const defaults: Record<DashboardObjectiveId, CanonicalExerciseId[]> = {
+    morning_check_in: ["morning_baseline_check_in"],
+    movement_exposure: ["supported_walk"],
+    activation: ["quad_sets"],
+    rom: ["heel_slides", "heel_prop_extension"],
+    recovery_basics: [
+      "protein_target",
+      "hydration",
+      "elevation_if_symptomatic",
+      "ice_if_symptomatic",
+    ],
+    evening_check_in: ["evening_response_check_in"],
+    skill_test: [],
+    milestone_watch: [],
+  };
+  return defaults[objectiveId].map((id) => defaultTaskForCanonicalExerciseId(id, context));
 }
 
-function objectiveDone(
-  groupId: string,
-  childQuests: DailyQuest[],
-  prescribedTasks: PrescribedTask[],
+function normalizeTaskForDashboard(
+  task: PrescribedTask,
+  index: number,
+  context: NormalizeCoachPlanContext = {},
+): PrescribedTask | null {
+  const canonicalExerciseId =
+    canonicalTaskDefinition(task.canonicalExerciseId, context)?.canonicalExerciseId ??
+    canonicalExerciseIdFromText(`${task.id} ${task.title}`) ??
+    task.canonicalExerciseId;
+  const definition = canonicalTaskDefinition(canonicalExerciseId, context);
+  if (!definition) return null;
+  const prescription = {
+    ...definition.prescription,
+    ...task.prescription,
+  };
+  const category = definition.category;
+  const parentObjectiveId = TASK_CATEGORY_TO_OBJECTIVE[category];
+  return {
+    ...task,
+    id: `task-${definition.canonicalExerciseId}`,
+    canonicalExerciseId: definition.canonicalExerciseId,
+    title: definition.title,
+    category,
+    parentObjectiveId,
+    prescription,
+    stopRules: uniqueDetails([...definition.stopRules, ...task.stopRules]),
+    taskIntent: definition.taskIntent,
+    taskPriority: definition.taskPriority,
+    completion: defaultTaskCompletion(task.completion),
+  };
+}
+
+function prescriptionConflict(
+  a: PrescribedTaskPrescription,
+  b: PrescribedTaskPrescription,
 ): boolean {
-  if (prescribedTasks.length > 0) return prescribedTasks.every(taskIsResolved);
-  return groupDone(groupId, childQuests);
+  const numericKeys: Array<keyof PrescribedTaskPrescription> = [
+    "sets",
+    "reps",
+    "holdSeconds",
+    "durationMinutes",
+  ];
+  return numericKeys.some((key) => a[key] != null && b[key] != null && a[key] !== b[key]);
 }
 
-function dashboardObjective(
-  plan: DailyCoachPlan,
-  group: DashboardObjectiveGroup,
-  childQuests: DailyQuest[],
-): DailyQuest {
-  const fromActiveCoachPlan = plan.status === "active" && plan.id !== `generated-plan-${plan.date}`;
-  const source: QuestSource = fromActiveCoachPlan ? "daily-coach-plan" : "phase";
-  const sourceLabel = fromActiveCoachPlan ? "Generated from active Coach Plan" : undefined;
-  const relatedQuestIds = childQuests.map((quest) => quest.id);
-  const prescribedTasks = tasksForDashboardObjective(group, childQuests);
-  const childDetails = childQuests
-    .filter((quest) => quest.id !== "morning-check-in" && quest.id !== "evening-check-in")
-    .flatMap((quest) => [quest.label, ...(quest.details ?? [])]);
+function mergePrescriptions(
+  a: PrescribedTaskPrescription,
+  b: PrescribedTaskPrescription,
+): PrescribedTaskPrescription {
+  return {
+    ...a,
+    ...Object.fromEntries(Object.entries(b).filter(([, value]) => value != null && value !== "")),
+  };
+}
 
-  switch (group) {
-    case "check-in":
-      return {
-        id: "morning-check-in",
-        date: plan.date,
-        label: "Morning baseline check-in",
-        title: "Morning baseline check-in",
-        done: objectiveDone("morning-check-in", childQuests, prescribedTasks),
-        status: objectiveDone("morning-check-in", childQuests, prescribedTasks)
-          ? "complete"
-          : "pending",
-        xp: 10,
-        kind: "main",
-        category: "main",
-        source,
-        sourceLabel,
-        reason: "Purpose: establish starting state.",
-        details: ["Pain, swelling, walking confidence, extension status, flexion comfort, sleep."],
-        relatedQuestIds,
-        objectiveGroup: group,
-        prescribedTasks,
-        questType: "check_in",
-        progressionType: "recovery",
-        phaseId: plan.phaseId,
-        planId: fromActiveCoachPlan ? plan.id : undefined,
-      };
-    case "movement":
-      return {
-        id: "gentle-movement-exposure",
-        date: plan.date,
-        label: "Gentle movement exposure",
-        title: "Gentle movement exposure",
-        done: objectiveDone("gentle-movement-exposure", childQuests, prescribedTasks),
-        status: objectiveDone("gentle-movement-exposure", childQuests, prescribedTasks)
-          ? "complete"
-          : "pending",
-        xp: 15,
-        kind: "main",
-        category: "main",
-        source,
-        sourceLabel,
-        reason: "Purpose: short supported walks and easy movement.",
-        details: uniqueDetails([
-          "Prioritize clean gait, comfort, and confidence. No chasing steps.",
-          ...childDetails,
-        ]),
-        relatedQuestIds,
-        objectiveGroup: group,
-        prescribedTasks,
-        questType: "required_action",
-        progressionType: "walking",
-        phaseId: plan.phaseId,
-        planId: fromActiveCoachPlan ? plan.id : undefined,
-      };
-    case "activation_rom":
-      return {
-        id: "activation-rom-work",
-        date: plan.date,
-        label: "Activation + ROM work",
-        title: "Activation + ROM work",
-        done: objectiveDone("activation-rom-work", childQuests, prescribedTasks),
-        status: objectiveDone("activation-rom-work", childQuests, prescribedTasks)
-          ? "complete"
-          : "pending",
-        xp: 20,
-        kind: "main",
-        category: "main",
-        source,
-        sourceLabel,
-        reason: fromActiveCoachPlan
-          ? "Purpose: complete today's prescribed activation and gentle ROM work from the active Daily Coach Plan."
-          : "Purpose: complete today's conservative activation and gentle ROM work.",
-        details: uniqueDetails([
-          ...(childDetails.length
-            ? childDetails
-            : ["Quad sets", "Gentle extension exposure", "Heel slides if prescribed/tolerated"]),
-        ]),
-        relatedQuestIds,
-        objectiveGroup: group,
-        prescribedTasks,
-        questType: "required_action",
-        progressionType: "skill_control",
-        phaseId: plan.phaseId,
-        planId: fromActiveCoachPlan ? plan.id : undefined,
-      };
-    case "recovery_support":
-      return {
-        id: "recovery-support",
-        date: plan.date,
-        label: "Recovery support",
-        title: "Recovery support",
-        done: objectiveDone("recovery-support", childQuests, prescribedTasks),
-        status: objectiveDone("recovery-support", childQuests, prescribedTasks)
-          ? "complete"
-          : "pending",
-        xp: 15,
-        kind: "main",
-        category: "main",
-        source,
-        sourceLabel,
-        reason: "Purpose: support healing and avoid irritation.",
-        details: uniqueDetails([
-          "Comfort-based swelling control",
-          "Protein target",
-          "Hydration",
-          "Rest / elevation as needed",
-          ...childDetails,
-        ]),
-        relatedQuestIds,
-        objectiveGroup: group,
-        prescribedTasks,
-        questType: "recovery_basic",
-        progressionType: "recovery",
-        phaseId: plan.phaseId,
-        planId: fromActiveCoachPlan ? plan.id : undefined,
-      };
-    case "evening_response":
-      return {
-        id: "evening-check-in",
-        date: plan.date,
-        label: "Evening response check-in",
-        title: "Evening response check-in",
-        done: objectiveDone("evening-check-in", childQuests, prescribedTasks),
-        status: objectiveDone("evening-check-in", childQuests, prescribedTasks)
-          ? "complete"
-          : "pending",
-        xp: 10,
-        kind: "main",
-        category: "main",
-        source,
-        sourceLabel,
-        reason: "Purpose: record how the knee responded to today's work.",
-        details: [
-          "Pain during / after",
-          "Swelling change",
-          "Walking response",
-          "Quad activation quality",
-          "Extension response",
-          "Flexion response",
-        ],
-        relatedQuestIds,
-        objectiveGroup: group,
-        prescribedTasks,
-        questType: "check_in",
-        progressionType: "recovery",
-        phaseId: plan.phaseId,
-        planId: fromActiveCoachPlan ? plan.id : undefined,
-      };
+function mergeCanonicalTasks(existing: PrescribedTask, incoming: PrescribedTask): PrescribedTask {
+  if (prescriptionConflict(existing.prescription, incoming.prescription)) {
+    console.warn("Coach Plan validation warning: conflicting prescriptions for canonical task.", {
+      canonicalExerciseId: existing.canonicalExerciseId,
+      existing: existing.prescription,
+      incoming: incoming.prescription,
+    });
   }
+  return {
+    ...existing,
+    prescription: mergePrescriptions(existing.prescription, incoming.prescription),
+    stopRules: uniqueDetails([...existing.stopRules, ...incoming.stopRules]),
+    completion:
+      existing.completion.status !== "not_started" ? existing.completion : incoming.completion,
+    taskPriority:
+      existing.taskPriority === "required" || incoming.taskPriority === "required"
+        ? "required"
+        : "optional",
+  };
+}
+
+function isObjectiveHeadingQuest(quest: DailyQuest): boolean {
+  const text = canonicalKey(`${quest.id} ${quest.label} ${quest.title ?? ""}`);
+  return (
+    text.includes("activation rom work") ||
+    text.includes("activation rom") ||
+    text.includes("recovery support") ||
+    text.includes("recovery basics") ||
+    text.includes("gentle movement exposure") ||
+    text.includes("clean movement exposures") ||
+    text.includes("quad activation work") ||
+    text.includes("gentle rom work")
+  );
+}
+
+function collectNormalizedTasks(
+  plan: DailyCoachPlan,
+  context: NormalizeCoachPlanContext,
+): PrescribedTask[] {
+  const tasks: PrescribedTask[] = [];
+  plan.quests.forEach((quest, questIndex) => {
+    if (quest.prescribedTasks?.length) {
+      quest.prescribedTasks.forEach((task, taskIndex) => {
+        const normalized = normalizeTaskForDashboard(task, questIndex + taskIndex, context);
+        if (normalized) tasks.push(normalized);
+      });
+      return;
+    }
+    const fallbackCanonicalId = canonicalExerciseIdFromText(
+      `${quest.id} ${quest.label} ${quest.title ?? ""}`,
+    );
+    if ((!context.includeDefaults && !fallbackCanonicalId) || isObjectiveHeadingQuest(quest))
+      return;
+    const fallback = prescribedTaskFromQuest(quest, questIndex);
+    const normalized = normalizeTaskForDashboard(fallback, questIndex, context);
+    if (normalized) tasks.push(normalized);
+  });
+  return tasks;
+}
+
+function buildObjectivesFromTasks(
+  plan: DailyCoachPlan,
+  tasks: PrescribedTask[],
+  context: NormalizeCoachPlanContext,
+): DailyQuest[] {
+  const byCanonicalId = new Map<CanonicalExerciseId, PrescribedTask>();
+  tasks.forEach((task) => {
+    const existing = byCanonicalId.get(task.canonicalExerciseId);
+    byCanonicalId.set(
+      task.canonicalExerciseId,
+      existing ? mergeCanonicalTasks(existing, task) : task,
+    );
+  });
+
+  if (context.includeDefaults) {
+    DASHBOARD_OBJECTIVE_ORDER.forEach((objectiveId) => {
+      const hasTaskForObjective = [...byCanonicalId.values()].some(
+        (task) => task.parentObjectiveId === objectiveId,
+      );
+      if (!hasTaskForObjective) {
+        defaultTasksForObjective(objectiveId, context).forEach((task) => {
+          const existing = byCanonicalId.get(task.canonicalExerciseId);
+          byCanonicalId.set(
+            task.canonicalExerciseId,
+            existing ? mergeCanonicalTasks(existing, task) : task,
+          );
+        });
+      }
+    });
+  }
+
+  const buckets: Record<DashboardObjectiveId, PrescribedTask[]> = {
+    morning_check_in: [],
+    movement_exposure: [],
+    activation: [],
+    rom: [],
+    recovery_basics: [],
+    evening_check_in: [],
+    skill_test: [],
+    milestone_watch: [],
+  };
+  [...byCanonicalId.values()].forEach((task) => buckets[task.parentObjectiveId].push(task));
+
+  return DASHBOARD_OBJECTIVE_ORDER.flatMap((objectiveId) => {
+    const prescribedTasks = buckets[objectiveId];
+    if (prescribedTasks.length === 0) return [];
+    const definition = DASHBOARD_OBJECTIVE_DEFINITIONS[objectiveId];
+    const done = prescribedTasks.every(taskIsResolved);
+    return [
+      {
+        id: objectiveId,
+        date: plan.date,
+        localDate: plan.localDate ?? plan.date,
+        label: definition.title,
+        title: definition.title,
+        done,
+        status: done ? "complete" : "pending",
+        xp: definition.xp,
+        kind: "main" as QuestKind,
+        category: "main" as QuestKind,
+        source:
+          plan.status === "active" ? ("daily-coach-plan" as QuestSource) : ("phase" as QuestSource),
+        reason: `Purpose: ${definition.purpose}`,
+        details: [definition.purpose],
+        relatedQuestIds: plan.quests.map((quest) => quest.id),
+        objectiveGroup: objectiveId,
+        prescribedTasks,
+        questType: objectiveId === "recovery_basics" ? "recovery_basic" : "required_action",
+        progressionType:
+          objectiveId === "movement_exposure"
+            ? "walking"
+            : objectiveId === "rom"
+              ? "rom"
+              : objectiveId === "recovery_basics" ||
+                  objectiveId === "morning_check_in" ||
+                  objectiveId === "evening_check_in"
+                ? "recovery"
+                : "skill_control",
+        phaseId: plan.phaseId,
+        planId: plan.status === "active" ? plan.id : undefined,
+      },
+    ];
+  });
+}
+
+export type CoachPlanValidationResult = { ok: true } | { ok: false; errors: string[] };
+
+const OBJECTIVE_ALLOWED_TASK_CATEGORIES: Record<DashboardObjectiveId, PrescribedTaskCategory[]> = {
+  morning_check_in: ["check_in_morning"],
+  movement_exposure: ["walking", "gait"],
+  activation: ["activation"],
+  rom: ["rom_extension", "rom_flexion"],
+  recovery_basics: ["recovery_basics", "nutrition", "hydration", "sleep", "swelling_management"],
+  evening_check_in: ["check_in_evening"],
+  skill_test: ["skill_test"],
+  milestone_watch: [],
+};
+
+export function validateCoachPlan(plan: DailyCoachPlan): CoachPlanValidationResult {
+  const errors: string[] = [];
+  const seen = new Map<CanonicalExerciseId, DashboardObjectiveId>();
+  plan.quests.forEach((quest) => {
+    const objectiveId = quest.objectiveGroup;
+    if (!objectiveId) {
+      errors.push(`${quest.label}: missing parent objective.`);
+      return;
+    }
+    (quest.prescribedTasks ?? []).forEach((task) => {
+      if (!task.canonicalExerciseId) errors.push(`${task.title}: missing canonicalExerciseId.`);
+      if (!task.category) errors.push(`${task.title}: missing category.`);
+      if (!task.parentObjectiveId) errors.push(`${task.title}: missing parentObjectiveId.`);
+      if (task.parentObjectiveId !== objectiveId) {
+        errors.push(`${task.title}: parentObjectiveId does not match rendered objective.`);
+      }
+      const allowed = OBJECTIVE_ALLOWED_TASK_CATEGORIES[objectiveId] ?? [];
+      if (!allowed.includes(task.category)) {
+        errors.push(`${task.title}: ${task.category} cannot render under ${objectiveId}.`);
+      }
+      const previousObjective = seen.get(task.canonicalExerciseId);
+      if (previousObjective && previousObjective !== objectiveId) {
+        errors.push(
+          `${task.canonicalExerciseId}: duplicate canonicalExerciseId appears in ${previousObjective} and ${objectiveId}.`,
+        );
+      }
+      seen.set(task.canonicalExerciseId, objectiveId);
+    });
+  });
+  return errors.length ? { ok: false, errors } : { ok: true };
+}
+
+function logCoachPlanValidation(plan: DailyCoachPlan, validation: CoachPlanValidationResult) {
+  const tree = Object.fromEntries(
+    plan.quests.map((quest) => [
+      quest.objectiveGroup ?? quest.id,
+      (quest.prescribedTasks ?? []).map((task) => task.canonicalExerciseId),
+    ]),
+  );
+  if (!validation.ok) {
+    console.error("Coach Plan validation failed: duplicate or misclassified prescribed tasks.", {
+      errors: validation.errors,
+      tree,
+    });
+    return;
+  }
+  if (import.meta.env?.DEV) {
+    console.debug("Today's Quests normalized tree", tree);
+  }
+}
+
+export function normalizeCoachPlan(
+  plan: DailyCoachPlan,
+  context: NormalizeCoachPlanContext = {},
+): DailyCoachPlan {
+  const normalizeContext = {
+    ...context,
+    date: context.date ?? plan.localDate ?? plan.date,
+  };
+  const tasks = collectNormalizedTasks(plan, normalizeContext);
+  const quests = buildObjectivesFromTasks(plan, tasks, normalizeContext);
+  const normalizedPlan = {
+    ...plan,
+    date: normalizeContext.date,
+    localDate: normalizeContext.date,
+    quests,
+  };
+  logCoachPlanValidation(normalizedPlan, validateCoachPlan(normalizedPlan));
+  return normalizedPlan;
 }
 
 export function groupCoachPlanQuestsIntoDashboardObjectives(plan: DailyCoachPlan): DailyQuest[] {
-  const groups: Record<DashboardObjectiveGroup, DailyQuest[]> = {
-    "check-in": [],
-    movement: [],
-    activation_rom: [],
-    recovery_support: [],
-    evening_response: [],
-  };
-
-  plan.quests.forEach((quest) => {
-    groups[quest.objectiveGroup ?? dashboardObjectiveGroupForQuest(quest)].push(quest);
-  });
-
-  return (
-    ["check-in", "movement", "activation_rom", "recovery_support", "evening_response"] as const
-  )
-    .map((group) => dashboardObjective(plan, group, groups[group]))
-    .slice(0, 5);
+  return normalizeCoachPlan(plan, { includeDefaults: true }).quests;
 }
 
 export function dailyCoachPlanForDate(
@@ -3693,12 +4182,9 @@ export function dailyCoachPlanForDate(
 ): DailyCoachPlan {
   const importedPlan = activeDailyCoachPlanForDate(s, isoDate);
   if (importedPlan) {
-    const quests = importedPlan.quests.map((quest) => normalizeQuestForDate(s, isoDate, quest));
     return {
       ...importedPlan,
-      quests: groupCoachPlanQuestsIntoDashboardObjectives({ ...importedPlan, quests }).map(
-        (quest) => normalizeQuestForDate(s, isoDate, quest),
-      ),
+      quests: importedPlan.quests.map((quest) => normalizeQuestForDate(s, isoDate, quest)),
     };
   }
 
@@ -3754,11 +4240,15 @@ export function dailyCoachPlanForDate(
     status: "draft",
   };
 
+  const normalizedPlan = normalizeCoachPlan(generatedPlan, {
+    state: s,
+    date: isoDate,
+    includeDefaults: true,
+    source: "generated",
+  });
   return {
-    ...generatedPlan,
-    quests: groupCoachPlanQuestsIntoDashboardObjectives(generatedPlan).map((quest) =>
-      normalizeQuestForDate(s, isoDate, quest),
-    ),
+    ...normalizedPlan,
+    quests: normalizedPlan.quests.map((quest) => normalizeQuestForDate(s, isoDate, quest)),
   };
 }
 
@@ -3771,35 +4261,26 @@ export function activeDailyCoachPlanForDate(
       ?.filter((item) => dailyRecordDate(item) === isoDate && item.status === "active")
       .sort((a, b) => (a.importedAt < b.importedAt ? 1 : -1))[0] ?? null;
   if (!plan) return null;
-  return {
+  const basePlan = {
     ...plan,
     date: isoDate,
     localDate: isoDate,
     skillTests: (plan.skillTests ?? []).map(
       (test, index) => normalizeSkillTest(test, index, isoDate) ?? test,
     ),
-    quests: plan.quests.map((quest, index) => {
-      const normalized = normalizeQuestForDate(s, isoDate, quest);
-      return {
-        ...normalized,
-        prescribedTasks: normalized.prescribedTasks ?? [prescribedTaskFromQuest(normalized, index)],
-      };
-    }),
+    quests: plan.quests.map((quest) => normalizeQuestForDate(s, isoDate, quest)),
   };
+  return normalizeCoachPlan(basePlan, {
+    state: s,
+    date: isoDate,
+    includeDefaults: false,
+    source: "active",
+  });
 }
 
 export function dailyQuestsForDate(s: PhoenixState, isoDate = getLocalDateKey()): DailyQuest[] {
   const plan = dailyCoachPlanForDate(s, isoDate);
-  const phaseId = plan.phaseId ?? phaseForDate(s, isoDate).id;
-  const shouldGroup =
-    phaseId === "acute-response" ||
-    phaseId === "activation-early-rom" ||
-    Boolean(activeDailyCoachPlanForDate(s, isoDate));
-  const quests =
-    shouldGroup && !plan.quests.every((quest) => quest.objectiveGroup)
-      ? groupCoachPlanQuestsIntoDashboardObjectives(plan)
-      : plan.quests;
-  return quests.map((quest) => normalizeQuestForDate(s, isoDate, quest));
+  return plan.quests.map((quest) => normalizeQuestForDate(s, isoDate, quest));
 }
 
 export type DailyCoachPlanImportResult =
@@ -4011,13 +4492,19 @@ function normalizeNextUnlocks(value: unknown): DailyCoachPlanNextUnlock[] {
 }
 
 const PRESCRIBED_TASK_CATEGORIES: PrescribedTaskCategory[] = [
-  "check_in",
-  "movement",
+  "check_in_morning",
+  "check_in_evening",
+  "walking",
+  "gait",
   "activation",
-  "rom",
-  "recovery",
+  "rom_extension",
+  "rom_flexion",
+  "recovery_basics",
   "nutrition",
-  "reflection",
+  "hydration",
+  "sleep",
+  "swelling_management",
+  "skill_test",
 ];
 
 function taskCategoryFromValue(
@@ -4025,6 +4512,12 @@ function taskCategoryFromValue(
   fallback: PrescribedTaskCategory,
 ): PrescribedTaskCategory {
   const category = stringValue(value).replace("-", "_");
+  if (category === "check_in")
+    return fallback === "check_in_evening" ? "check_in_evening" : "check_in_morning";
+  if (category === "movement") return "walking";
+  if (category === "rom") return fallback === "rom_flexion" ? "rom_flexion" : "rom_extension";
+  if (category === "recovery") return "recovery_basics";
+  if (category === "reflection") return "check_in_evening";
   return PRESCRIBED_TASK_CATEGORIES.includes(category as PrescribedTaskCategory)
     ? (category as PrescribedTaskCategory)
     : fallback;
@@ -4095,125 +4588,38 @@ function prescribedTaskDefaults(
   id: string,
   title: string,
   fallbackCategory: PrescribedTaskCategory,
-): Pick<PrescribedTask, "category" | "prescription" | "stopRules"> {
-  const text = `${id} ${title}`.toLowerCase();
-  if (text.includes("morning") && text.includes("check")) {
-    return {
-      category: "check_in",
-      prescription: {
-        frequency: "Once before choosing today's workload",
-        qualityTarget:
-          "Baseline captures pain, swelling, walking confidence, extension, flexion, sleep, and notes.",
-      },
-      stopRules: [],
-    };
-  }
-  if (text.includes("evening") && text.includes("check")) {
-    return {
-      category: "reflection",
-      prescription: {
-        frequency: "Once after today's work",
-        qualityTarget:
-          "Record task adherence, pain during/after, swelling change, walking response, activation quality, and ROM response.",
-      },
-      stopRules: [],
-    };
-  }
-  if (text.includes("quad")) {
-    return {
-      category: "activation",
-      prescription: {
-        sets: 3,
-        reps: 10,
-        holdSeconds: 5,
-        frequency: "1 session today",
-        effortTarget: "5-6/10 effort",
-        qualityTarget: "Repeatable contraction with no pain spike. Rest fully between reps.",
-        rangeInstruction: "Comfortable knee position only.",
-      },
-      stopRules: ["Stop if pain rises above 4/10 or contraction quality fades sharply."],
-    };
-  }
-  if (text.includes("heel prop") || text.includes("extension")) {
-    return {
-      category: "rom",
-      prescription: {
-        sets: 2,
-        durationMinutes: 3,
-        frequency: "2-3 exposures today",
-        effortTarget: "Passive only",
-        qualityTarget: "Relaxed extension tolerance without guarding.",
-        rangeInstruction: "No pushing, no forced end range. Stop before sharp pain or pinching.",
-      },
-      stopRules: ["Stop if sharp pain, pinching, or worse walking follows the exposure."],
-    };
-  }
-  if (text.includes("heel slide") || text.includes("flexion")) {
-    return {
-      category: "rom",
-      prescription: {
-        sets: 2,
-        reps: 10,
-        frequency: "1-2 sets today",
-        effortTarget: "Easy range only",
-        qualityTarget: "Easy flexion exposure, not max range.",
-        rangeInstruction: "Comfortable range only. No strap pulling and no forcing end range.",
-      },
-      stopRules: ["Stop if flexion causes sharp pain, pinching, or swelling response."],
-    };
-  }
-  if (text.includes("walk") || text.includes("gait") || text.includes("movement")) {
-    return {
-      category: "movement",
-      prescription: {
-        durationMinutes: 3,
-        frequency: "2-4 short exposures today",
-        effortTarget: "2-3/10 effort",
-        qualityTarget: "Clean supported gait, comfort, and confidence. No chasing steps.",
-      },
-      stopRules: ["Stop if gait worsens, confidence drops, or pain rises above 4/10."],
-    };
-  }
-  if (text.includes("protein")) {
-    return {
-      category: "nutrition",
-      prescription: {
-        frequency: "Across the day",
-        qualityTarget:
-          "Hit today's protein target without using pain or fatigue as a reason to skip meals.",
-      },
-      stopRules: [],
-    };
-  }
-  if (
-    text.includes("swelling") ||
-    text.includes("elevation") ||
-    text.includes("ice") ||
-    text.includes("hydration") ||
-    text.includes("rest") ||
-    text.includes("recover")
-  ) {
-    return {
-      category: "recovery",
-      prescription: {
-        durationMinutes: 10,
-        frequency: "As needed between activity exposures",
-        effortTarget: "Comfort-based only",
-        qualityTarget:
-          "Settle symptoms and avoid irritation; do not chase a perfect swelling score.",
-      },
-      stopRules: ["Stop any strategy that increases pain, numbness, or concerning symptoms."],
-    };
-  }
-  return {
-    category: fallbackCategory,
-    prescription: {
-      frequency: "Complete once today",
-      effortTarget: "Conservative and symptom-guided",
-      qualityTarget: "Complete only while pain, gait, and swelling response stay acceptable.",
-    },
-    stopRules: ["Stop or modify if pain, swelling, gait, or movement quality worsens."],
+): Pick<
+  PrescribedTask,
+  | "canonicalExerciseId"
+  | "title"
+  | "category"
+  | "parentObjectiveId"
+  | "prescription"
+  | "stopRules"
+  | "taskIntent"
+  | "taskPriority"
+> {
+  const fallbackCanonicalByCategory: Record<PrescribedTaskCategory, CanonicalExerciseId> = {
+    check_in_morning: "morning_baseline_check_in",
+    check_in_evening: "evening_response_check_in",
+    walking: "supported_walk",
+    gait: "supported_walk",
+    activation: "quad_sets",
+    rom_extension: "heel_prop_extension",
+    rom_flexion: "heel_slides",
+    recovery_basics: "pacing_rest",
+    nutrition: "protein_target",
+    hydration: "hydration",
+    sleep: "sleep_target",
+    swelling_management: "elevation_if_symptomatic",
+    skill_test: "straight_leg_raise",
   };
+  const canonicalExerciseId =
+    canonicalExerciseIdFromText(`${id} ${title}`) ?? fallbackCanonicalByCategory[fallbackCategory];
+  const definition =
+    canonicalTaskDefinition(canonicalExerciseId) ??
+    canonicalTaskDefinition(fallbackCanonicalByCategory[fallbackCategory])!;
+  return definition;
 }
 
 function normalizePrescribedTask(
@@ -4228,11 +4634,15 @@ function normalizePrescribedTask(
     const id = `task-${index + 1}-${slugify(title)}`;
     const defaults = prescribedTaskDefaults(id, title, fallbackCategory);
     return {
-      id,
-      title,
+      id: `task-${defaults.canonicalExerciseId}`,
+      canonicalExerciseId: defaults.canonicalExerciseId,
+      title: defaults.title,
       category: defaults.category,
+      parentObjectiveId: defaults.parentObjectiveId,
       prescription: defaults.prescription,
       stopRules: defaults.stopRules,
+      taskIntent: defaults.taskIntent,
+      taskPriority: defaults.taskPriority,
       completion: defaultTaskCompletion(),
     };
   }
@@ -4246,32 +4656,52 @@ function normalizePrescribedTask(
     fallbackTitle ||
     `Task ${index + 1}`;
   const id = stringValue(record.id) || `task-${index + 1}-${slugify(title)}`;
-  const defaults = prescribedTaskDefaults(id, title, fallbackCategory);
+  const canonicalExerciseId =
+    canonicalExerciseIdFromText(
+      `${stringValue(record.canonicalExerciseId)} ${id} ${title} ${stringValue(record.exerciseId)}`,
+    ) ?? canonicalExerciseIdFromText(`${id} ${title}`);
+  const defaults = prescribedTaskDefaults(id, canonicalExerciseId ?? title, fallbackCategory);
   const prescription = {
     ...defaults.prescription,
     ...normalizePrescription(record.prescription),
   };
   return {
-    id,
-    title,
-    category: taskCategoryFromValue(record.category, defaults.category),
+    id: `task-${defaults.canonicalExerciseId}`,
+    canonicalExerciseId: defaults.canonicalExerciseId,
+    title: defaults.title,
+    category: defaults.category,
+    parentObjectiveId: defaults.parentObjectiveId,
     prescription,
     stopRules: stringArray(record.stopRules).length
       ? stringArray(record.stopRules)
       : defaults.stopRules,
+    taskIntent:
+      record.taskIntent === "check_in" ||
+      record.taskIntent === "build" ||
+      record.taskIntent === "maintain" ||
+      record.taskIntent === "recover" ||
+      record.taskIntent === "fuel" ||
+      record.taskIntent === "test"
+        ? record.taskIntent
+        : defaults.taskIntent,
+    taskPriority:
+      record.taskPriority === "optional" || record.taskPriority === "required"
+        ? record.taskPriority
+        : defaults.taskPriority,
     completion: defaultTaskCompletion(record.completion as Partial<PrescribedTaskCompletion>),
   };
 }
 
 function fallbackTaskCategoryForQuest(quest: Pick<DailyQuest, "id" | "label" | "reason">) {
   const group = dashboardObjectiveGroupForQuest(quest as DailyQuest);
-  if (group === "movement") return "movement";
-  if (group === "recovery_support") return "recovery";
-  if (group === "check-in") return "check_in";
-  if (group === "evening_response") return "reflection";
+  if (group === "movement_exposure") return "walking";
+  if (group === "recovery_basics") return "recovery_basics";
+  if (group === "morning_check_in") return "check_in_morning";
+  if (group === "evening_check_in") return "check_in_evening";
+  if (group === "rom") return "rom_extension";
   const text = normalizedQuestText(quest).toLowerCase();
   return text.includes("rom") || text.includes("extension") || text.includes("flexion")
-    ? "rom"
+    ? "rom_extension"
     : "activation";
 }
 
@@ -4279,13 +4709,17 @@ function prescribedTaskFromQuest(quest: DailyQuest, index = 0): PrescribedTask {
   const category = fallbackTaskCategoryForQuest(quest);
   const defaults = prescribedTaskDefaults(quest.id, quest.title ?? quest.label, category);
   return {
-    id: `task-${quest.id}`,
-    title: quest.title ?? quest.label,
+    id: `task-${defaults.canonicalExerciseId}`,
+    canonicalExerciseId: defaults.canonicalExerciseId,
+    title: defaults.title,
     category: defaults.category,
+    parentObjectiveId: defaults.parentObjectiveId,
     prescription: defaults.prescription,
     stopRules: quest.details?.length
       ? uniqueDetails([...defaults.stopRules, ...quest.details])
       : defaults.stopRules,
+    taskIntent: defaults.taskIntent,
+    taskPriority: defaults.taskPriority,
     completion: defaultTaskCompletion(quest.done ? { status: "completed" } : {}),
   };
 }
@@ -4314,11 +4748,18 @@ function normalizeQuestTasks(
 
 function objectiveGroupFromValue(value: unknown): DashboardObjectiveGroup | undefined {
   const group = stringValue(value).replace("-", "_");
-  if (group === "check_in" || group === "check-in") return "check-in";
-  if (group === "movement") return "movement";
-  if (group === "activation_rom" || group === "activation-rom") return "activation_rom";
-  if (group === "recovery_support" || group === "recovery-support") return "recovery_support";
-  if (group === "evening_response" || group === "evening-response") return "evening_response";
+  if (group === "check_in" || group === "morning_check_in" || group === "check-in")
+    return "morning_check_in";
+  if (group === "movement" || group === "movement_exposure") return "movement_exposure";
+  if (group === "activation") return "activation";
+  if (group === "activation_rom" || group === "activation-rom") return "activation";
+  if (group === "rom") return "rom";
+  if (group === "recovery_support" || group === "recovery-support" || group === "recovery_basics")
+    return "recovery_basics";
+  if (group === "evening_response" || group === "evening-response" || group === "evening_check_in")
+    return "evening_check_in";
+  if (group === "skill_test") return "skill_test";
+  if (group === "milestone_watch") return "milestone_watch";
   return undefined;
 }
 
@@ -4437,7 +4878,7 @@ function normalizeImportedQuest(
   const kind: QuestKind = kindValue === "side" ? "side" : "main";
   const fallbackCategory = taskCategoryFromValue(
     record.taskCategory ?? record.category,
-    label.toLowerCase().includes("walk") ? "movement" : "activation",
+    label.toLowerCase().includes("walk") ? "walking" : "activation",
   );
   const xp = typeof record.xp === "number" && Number.isFinite(record.xp) ? record.xp : 10;
   const status = stringValue(record.status);
@@ -4545,52 +4986,74 @@ export function parseDailyCoachPlanJson(
   }
   if (errors.length > 0) return { ok: false, errors };
 
-  return {
-    ok: true,
-    plan: {
-      id,
-      date: planDate,
-      localDate: planDate,
-      timestampUtc: importedAt,
-      source,
-      authorName: stringValue(input.authorName) || undefined,
-      createdAt,
-      importedAt,
-      planType: "daily_coach_plan",
-      phaseId: activePhase,
-      missionIds: Array.isArray(input.missionIds)
-        ? input.missionIds.filter((mission): mission is MissionId =>
-            MISSIONS.some((known) => known.id === mission),
-          )
-        : [],
-      trackIds: Array.isArray(input.trackIds)
-        ? input.trackIds.filter((track): track is RecoveryTrackId =>
-            RECOVERY_TRACKS.some((known) => known.id === track),
-          )
-        : [],
-      readiness,
-      readinessReason: stringValue(input.readinessReason) || undefined,
-      primaryFocus,
-      focus: primaryFocus,
-      priority: stringValue(input.priority) || primaryFocus,
-      workload: stringValue(input.workload) || "",
-      rationale: stringValue(input.rationale) || "",
-      nextReassessment: stringValue(input.nextReassessment) || "",
-      confidence:
-        input.confidence === "High" || input.confidence === "Low" || input.confidence === "Medium"
-          ? input.confidence
-          : "Medium",
-      targets: normalizePlanTargets(input.targets),
-      quests,
-      skillTests,
-      milestoneUpdates,
-      nextUnlocks,
-      stopRules,
-      eveningCheckInFocus: stringArray(input.eveningCheckInFocus),
-      notes: stringValue(input.notes),
-      status: "draft",
-    },
+  const plan: DailyCoachPlan = {
+    id,
+    date: planDate,
+    localDate: planDate,
+    timestampUtc: importedAt,
+    source,
+    authorName: stringValue(input.authorName) || undefined,
+    createdAt,
+    importedAt,
+    planType: "daily_coach_plan",
+    phaseId: activePhase,
+    missionIds: Array.isArray(input.missionIds)
+      ? input.missionIds.filter((mission): mission is MissionId =>
+          MISSIONS.some((known) => known.id === mission),
+        )
+      : [],
+    trackIds: Array.isArray(input.trackIds)
+      ? input.trackIds.filter((track): track is RecoveryTrackId =>
+          RECOVERY_TRACKS.some((known) => known.id === track),
+        )
+      : [],
+    readiness,
+    readinessReason: stringValue(input.readinessReason) || undefined,
+    primaryFocus,
+    focus: primaryFocus,
+    priority: stringValue(input.priority) || primaryFocus,
+    workload: stringValue(input.workload) || "",
+    rationale: stringValue(input.rationale) || "",
+    nextReassessment: stringValue(input.nextReassessment) || "",
+    confidence:
+      input.confidence === "High" || input.confidence === "Low" || input.confidence === "Medium"
+        ? input.confidence
+        : "Medium",
+    targets: normalizePlanTargets(input.targets),
+    quests,
+    skillTests,
+    milestoneUpdates,
+    nextUnlocks,
+    stopRules,
+    eveningCheckInFocus: stringArray(input.eveningCheckInFocus),
+    notes: stringValue(input.notes),
+    status: "draft",
   };
+  const normalizedPlan = normalizeCoachPlan(plan, {
+    date: planDate,
+    includeDefaults: false,
+    source: "active",
+  });
+  const validation = validateCoachPlan(normalizedPlan);
+  if (normalizedPlan.quests.length === 0) {
+    return {
+      ok: false,
+      errors: [
+        "Coach Plan validation failed: duplicate or misclassified prescribed tasks.",
+        "Coach plan did not produce any normalized dashboard objectives.",
+      ],
+    };
+  }
+  if (!validation.ok) {
+    return {
+      ok: false,
+      errors: [
+        "Coach Plan validation failed: duplicate or misclassified prescribed tasks.",
+        ...validation.errors,
+      ],
+    };
+  }
+  return { ok: true, plan: normalizedPlan };
 }
 
 function applyDailyCoachPlanMilestoneUpdates(
@@ -4633,6 +5096,12 @@ export function activateDailyCoachPlan(plan: DailyCoachPlan) {
     const importedAt = plan.importedAt || getUtcTimestamp();
     const localDate = plan.localDate || plan.date;
     const timestampUtc = plan.timestampUtc || importedAt;
+    const sourcePlan = normalizeCoachPlan(plan, {
+      state: prev,
+      date: localDate,
+      includeDefaults: false,
+      source: "active",
+    });
     const previousQuests = dailyQuestsForDate(prev, localDate);
     const previousCompleted = previousQuests.filter((quest) => quest.done);
     const nextQuestCompletions = {
@@ -4648,7 +5117,7 @@ export function activateDailyCoachPlan(plan: DailyCoachPlan) {
       },
     };
 
-    const quests: DailyQuest[] = plan.quests.map((quest) => {
+    const quests: DailyQuest[] = sourcePlan.quests.map((quest) => {
       const matchedCompleted = previousCompleted.find(
         (existing) => existing.id === quest.id || existing.label === quest.label,
       );
@@ -4681,7 +5150,7 @@ export function activateDailyCoachPlan(plan: DailyCoachPlan) {
     });
 
     const activatedPlan: DailyCoachPlan = {
-      ...plan,
+      ...sourcePlan,
       date: localDate,
       localDate,
       timestampUtc,

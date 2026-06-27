@@ -22,7 +22,7 @@ const exampleJson = `{
     {
       "id": "activation-rom-work",
       "label": "Activation + ROM work",
-      "objectiveGroup": "activation_rom",
+      "objectiveGroup": "activation",
       "kind": "main",
       "xp": 20,
       "prescribedTasks": [
@@ -42,7 +42,7 @@ const exampleJson = `{
         {
           "id": "heel-slides",
           "title": "Heel slides",
-          "category": "rom",
+          "category": "rom_flexion",
           "prescription": {
             "sets": 2,
             "reps": 10,
@@ -56,7 +56,7 @@ const exampleJson = `{
     {
       "id": "evening-check-in",
       "label": "Evening response check-in",
-      "objectiveGroup": "evening_response",
+      "objectiveGroup": "evening_check_in",
       "kind": "main",
       "xp": 10
     }

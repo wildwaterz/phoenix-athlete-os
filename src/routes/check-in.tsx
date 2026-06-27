@@ -964,7 +964,12 @@ function CheckInPage() {
   const e = savedEvening ?? createDefaultEveningCheckIn(selectedDate, phase.id);
   const prescribedTasks = dailyQuestsForDate(s, selectedDate)
     .flatMap((quest) => quest.prescribedTasks ?? [])
-    .filter((task) => task.category !== "check_in" && task.category !== "reflection");
+    .filter(
+      (task) =>
+        task.category !== "check_in_morning" &&
+        task.category !== "check_in_evening" &&
+        task.category !== "skill_test",
+    );
   const skillTests = skillTestsForDate(s, selectedDate);
   const hasMorning = Boolean(savedMorning);
   const hasEvening = Boolean(savedEvening);

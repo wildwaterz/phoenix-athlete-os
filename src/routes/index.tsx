@@ -454,7 +454,7 @@ function Dashboard() {
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold tracking-tight">Today's Quests</div>
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-              Complete prescribed tasks
+              {activePlan ? "Generated from active Coach Plan" : "Complete prescribed tasks"}
             </div>
           </div>
 
@@ -851,11 +851,6 @@ function QuestRow({
                 <span className={cn("block text-sm", q.done && "text-muted-foreground")}>
                   {q.label}
                 </span>
-                {q.sourceLabel && (
-                  <span className="mt-1 block text-[11px] font-medium uppercase tracking-[0.14em] text-phoenix">
-                    {q.sourceLabel}
-                  </span>
-                )}
                 <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
                   {q.reason}
                 </span>
@@ -906,11 +901,6 @@ function QuestRow({
           <span className={cn("block text-sm", q.done && "line-through text-muted-foreground")}>
             {q.label}
           </span>
-          {q.sourceLabel && (
-            <span className="mt-1 block text-[11px] font-medium uppercase tracking-[0.14em] text-phoenix">
-              {q.sourceLabel}
-            </span>
-          )}
           {q.details && q.details.length > 0 && (
             <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
               {q.details.join(" · ")}
