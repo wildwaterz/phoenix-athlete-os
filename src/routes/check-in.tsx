@@ -23,8 +23,16 @@ import {
   type FlexionStatus,
   type MorningCheckIn,
   type PrescribedTask,
+  type PrescribedTaskActivationQuality,
+  type PrescribedTaskAfterEffect,
   type PrescribedTaskCompletion,
   type PrescribedTaskCompletionStatus,
+  type PrescribedTaskControlQuality,
+  type PrescribedTaskExtensionAfter,
+  type PrescribedTaskFlexionLimitingFactor,
+  type PrescribedTaskGaitQuality,
+  type PrescribedTaskPartialEstimate,
+  type PrescribedTaskSupportUsed,
   type RangeResponse,
   type SkillTest,
   type SkillTestResult,
@@ -653,6 +661,186 @@ function taskPrescriptionSummary(task: PrescribedTask): string {
     .join(" · ");
 }
 
+type TaskResponseKind =
+  | "walking_gait"
+  | "activation"
+  | "skill_control"
+  | "rom_flexion"
+  | "rom_extension"
+  | "recovery_basics";
+
+const taskStatusOptions: Array<Exclude<PrescribedTaskCompletionStatus, "not_started">> = [
+  "completed",
+  "partial",
+  "skipped",
+];
+
+const partialEstimateOptions: PrescribedTaskPartialEstimate[] = [
+  "less_than_half",
+  "about_half",
+  "most",
+  "custom",
+];
+
+const afterEffectOptions: PrescribedTaskAfterEffect[] = ["no_issue", "mild_settled", "worse"];
+
+const gaitQualityOptions: PrescribedTaskGaitQuality[] = ["clean", "slight_limp", "worse_limp"];
+
+const supportUsedOptions: PrescribedTaskSupportUsed[] = [
+  "none",
+  "one_crutch",
+  "two_crutches",
+  "mixed",
+];
+
+const activationQualityOptions: PrescribedTaskActivationQuality[] = [
+  "could_not_find",
+  "weak_repeatable",
+  "good_control",
+  "faded",
+];
+
+const controlQualityOptions: PrescribedTaskControlQuality[] = [
+  "clean",
+  "slight_lag",
+  "clear_lag",
+  "not_sure",
+];
+
+const taskFlexionLimitingFactorOptions: PrescribedTaskFlexionLimitingFactor[] = [
+  "comfortable",
+  "incision_scar_tension",
+  "swelling_fullness",
+  "joint_pinch",
+  "pain",
+  "unknown",
+];
+
+const extensionAfterOptions: PrescribedTaskExtensionAfter[] = [
+  "relaxed_neutral",
+  "stiff",
+  "painful_pinching",
+  "not_tested",
+];
+
+const limitationReasonOptions = [
+  "symptoms",
+  "fatigue",
+  "time",
+  "confidence",
+  "unclear_prescription",
+  "other",
+];
+
+const skippedReasonOptions = [
+  "symptoms",
+  "time_or_energy",
+  "not_needed_today",
+  "forgot",
+  "unclear_prescription",
+  "other",
+];
+
+function taskResponseKind(task: PrescribedTask): TaskResponseKind {
+  if (task.category === "walking" || task.category === "gait") return "walking_gait";
+  if (task.category === "activation") return "activation";
+  if (task.category === "skill_test") return "skill_control";
+  if (task.category === "rom_flexion") return "rom_flexion";
+  if (task.category === "rom_extension") return "rom_extension";
+  return "recovery_basics";
+}
+
+function isRecoveryBasicsTask(task: PrescribedTask): boolean {
+  return taskResponseKind(task) === "recovery_basics";
+}
+
+function dosePatchForCompletedTask(task: PrescribedTask): Partial<PrescribedTaskCompletion> {
+  return {
+    actualSets: task.prescription.sets,
+    actualReps: task.prescription.reps,
+    actualDurationMinutes: task.prescription.durationMinutes,
+  };
+}
+
+function buildTaskStatusPatch(
+  task: PrescribedTask,
+  status: PrescribedTaskCompletionStatus,
+  completion: PrescribedTaskCompletion,
+): Partial<PrescribedTaskCompletion> {
+  if (status === "completed") {
+    return {
+      status,
+      ...dosePatchForCompletedTask(task),
+      partialEstimate: undefined,
+      limitationReason: undefined,
+      skippedReason: undefined,
+    };
+  }
+  if (status === "partial") {
+    return {
+      status,
+      actualSets: undefined,
+      actualReps: undefined,
+      actualDurationMinutes: undefined,
+      partialEstimate: completion.partialEstimate ?? "about_half",
+      skippedReason: undefined,
+    };
+  }
+  if (status === "skipped") {
+    return {
+      status,
+      actualSets: undefined,
+      actualReps: undefined,
+      actualDurationMinutes: undefined,
+      partialEstimate: undefined,
+      limitationReason: undefined,
+      afterEffect: undefined,
+      gaitQuality: undefined,
+      supportUsed: undefined,
+      activationQuality: undefined,
+      controlQuality: undefined,
+      limitingFactor: undefined,
+      flexionEstimateDegrees: undefined,
+      extensionAfter: undefined,
+    };
+  }
+  return {
+    status,
+    actualSets: undefined,
+    actualReps: undefined,
+    actualDurationMinutes: undefined,
+    partialEstimate: undefined,
+    limitationReason: undefined,
+    skippedReason: undefined,
+  };
+}
+
+function TaskSelect<T extends string>({
+  value,
+  options,
+  placeholder = "Select",
+  onChange,
+}: {
+  value: T | undefined;
+  options: readonly T[];
+  placeholder?: string;
+  onChange: (value: T | undefined) => void;
+}) {
+  return (
+    <SelectInput
+      value={value ?? ""}
+      onChange={(event) => onChange(event.target.value ? (event.target.value as T) : undefined)}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {formatOption(option)}
+        </option>
+      ))}
+    </SelectInput>
+  );
+}
+
 function PrescribedTaskResponseSection({
   tasks,
   e,
@@ -674,6 +862,9 @@ function PrescribedTaskResponseSection({
       <div className="space-y-3">
         {tasks.map((task) => {
           const completion = e.taskCompletions?.[task.id] ?? task.completion;
+          const responseKind = taskResponseKind(task);
+          const showResponseFields =
+            completion.status === "completed" || completion.status === "partial";
           return (
             <div key={task.id} className="rounded-lg border border-border/80 bg-card/40 p-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -683,76 +874,276 @@ function PrescribedTaskResponseSection({
                     {taskPrescriptionSummary(task)}
                   </div>
                 </div>
-                <select
-                  value={completion.status}
-                  onChange={(event) =>
-                    updateTask(task, {
-                      status: event.target.value as PrescribedTaskCompletionStatus,
-                    })
-                  }
-                  className="rounded-lg border border-border bg-background/40 px-2 py-1.5 text-sm outline-none focus:border-phoenix"
-                >
-                  <option value="not_started">Not started</option>
-                  <option value="completed">Completed</option>
-                  <option value="partial">Partial</option>
-                  <option value="skipped">Skipped</option>
-                </select>
+                <div className="flex flex-wrap gap-1.5">
+                  {taskStatusOptions.map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() =>
+                        updateTask(
+                          task,
+                          buildTaskStatusPatch(
+                            task,
+                            completion.status === status ? "not_started" : status,
+                            completion,
+                          ),
+                        )
+                      }
+                      className={cn(
+                        "rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition",
+                        completion.status === status
+                          ? "border-phoenix bg-phoenix/15 text-phoenix"
+                          : "border-border text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {status === "completed" ? "Completed" : formatOption(status)}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <Field label="Actual sets">
-                  <TaskNumberInput
-                    value={completion.actualSets}
-                    onChange={(value) => updateTask(task, { actualSets: value })}
-                  />
-                </Field>
-                <Field label="Actual reps">
-                  <TaskNumberInput
-                    value={completion.actualReps}
-                    onChange={(value) => updateTask(task, { actualReps: value })}
-                  />
-                </Field>
-                <Field label="Actual minutes">
-                  <TaskNumberInput
-                    value={completion.actualDurationMinutes}
-                    onChange={(value) => updateTask(task, { actualDurationMinutes: value })}
-                  />
-                </Field>
-                <Field label="Pain during">
-                  <TaskNumberInput
-                    value={completion.painDuring}
-                    max={10}
-                    onChange={(value) => updateTask(task, { painDuring: value })}
-                  />
-                </Field>
-                <Field label="Pain after">
-                  <TaskNumberInput
-                    value={completion.painAfter}
-                    max={10}
-                    onChange={(value) => updateTask(task, { painAfter: value })}
-                  />
-                </Field>
-                <Field label="Quality" hint="1 — 5">
-                  <TaskNumberInput
-                    value={completion.qualityScore}
-                    min={1}
-                    max={5}
-                    onChange={(value) => updateTask(task, { qualityScore: value })}
-                  />
-                </Field>
-              </div>
-              <div className="mt-3">
-                <TextArea
-                  value={completion.notes ?? ""}
-                  onChange={(event) => updateTask(task, { notes: event.target.value })}
-                  placeholder="What changed, what limited the task, or what felt easy?"
+              {completion.status === "not_started" && (
+                <div className="mt-3 text-xs text-muted-foreground">
+                  Choose Completed, Partial, or Skipped after you know how this task went.
+                </div>
+              )}
+
+              {completion.status === "partial" && !isRecoveryBasicsTask(task) && (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Field label="Completion estimate">
+                    <TaskSelect
+                      value={completion.partialEstimate}
+                      options={partialEstimateOptions}
+                      onChange={(value) =>
+                        updateTask(task, {
+                          partialEstimate: value,
+                          actualSets: value === "custom" ? completion.actualSets : undefined,
+                          actualReps: value === "custom" ? completion.actualReps : undefined,
+                          actualDurationMinutes:
+                            value === "custom" ? completion.actualDurationMinutes : undefined,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Limitation reason">
+                    <TaskSelect
+                      value={completion.limitationReason}
+                      options={limitationReasonOptions}
+                      onChange={(value) => updateTask(task, { limitationReason: value })}
+                    />
+                  </Field>
+                  {completion.partialEstimate === "custom" && (
+                    <CustomDoseFields task={task} completion={completion} updateTask={updateTask} />
+                  )}
+                </div>
+              )}
+
+              {completion.status === "skipped" && (
+                <div className="mt-3">
+                  <Field label="Skipped reason">
+                    <TaskSelect
+                      value={completion.skippedReason}
+                      options={skippedReasonOptions}
+                      onChange={(value) => updateTask(task, { skippedReason: value })}
+                    />
+                  </Field>
+                </div>
+              )}
+
+              {showResponseFields && !isRecoveryBasicsTask(task) && (
+                <TaskToleranceFields
+                  task={task}
+                  responseKind={responseKind}
+                  completion={completion}
+                  updateTask={updateTask}
                 />
-              </div>
+              )}
+
+              {completion.status !== "not_started" && (
+                <div className="mt-3">
+                  <TextArea
+                    value={completion.notes ?? ""}
+                    onChange={(event) => updateTask(task, { notes: event.target.value })}
+                    placeholder={
+                      completion.status === "skipped"
+                        ? "Anything tomorrow's plan should know?"
+                        : "What should tomorrow's plan know?"
+                    }
+                  />
+                </div>
+              )}
             </div>
           );
         })}
       </div>
     </div>
+  );
+}
+
+function CustomDoseFields({
+  task,
+  completion,
+  updateTask,
+}: {
+  task: PrescribedTask;
+  completion: PrescribedTaskCompletion;
+  updateTask: (task: PrescribedTask, patch: Partial<PrescribedTaskCompletion>) => void;
+}) {
+  const kind = taskResponseKind(task);
+  const showSets = kind === "activation" || kind === "rom_flexion";
+  const showReps = kind === "activation" || kind === "skill_control" || kind === "rom_flexion";
+  const showMinutes = kind === "walking_gait" || kind === "rom_extension";
+
+  return (
+    <>
+      {showSets && (
+        <Field label="Actual sets">
+          <TaskNumberInput
+            value={completion.actualSets}
+            onChange={(value) => updateTask(task, { actualSets: value })}
+          />
+        </Field>
+      )}
+      {showReps && (
+        <Field label={kind === "skill_control" ? "Reps completed" : "Actual reps"}>
+          <TaskNumberInput
+            value={completion.actualReps}
+            onChange={(value) => updateTask(task, { actualReps: value })}
+          />
+        </Field>
+      )}
+      {showMinutes && (
+        <Field label="Actual minutes">
+          <TaskNumberInput
+            value={completion.actualDurationMinutes}
+            onChange={(value) => updateTask(task, { actualDurationMinutes: value })}
+          />
+        </Field>
+      )}
+    </>
+  );
+}
+
+function TaskToleranceFields({
+  task,
+  responseKind,
+  completion,
+  updateTask,
+}: {
+  task: PrescribedTask;
+  responseKind: TaskResponseKind;
+  completion: PrescribedTaskCompletion;
+  updateTask: (task: PrescribedTask, patch: Partial<PrescribedTaskCompletion>) => void;
+}) {
+  if (responseKind === "walking_gait") {
+    return (
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <Field label="Gait quality">
+          <TaskSelect
+            value={completion.gaitQuality}
+            options={gaitQualityOptions}
+            onChange={(value) => updateTask(task, { gaitQuality: value })}
+          />
+        </Field>
+        <Field label="Support used">
+          <TaskSelect
+            value={completion.supportUsed}
+            options={supportUsedOptions}
+            onChange={(value) => updateTask(task, { supportUsed: value })}
+          />
+        </Field>
+        <AfterEffectField task={task} completion={completion} updateTask={updateTask} />
+      </div>
+    );
+  }
+
+  if (responseKind === "activation") {
+    return (
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <Field label="Activation quality">
+          <TaskSelect
+            value={completion.activationQuality}
+            options={activationQualityOptions}
+            onChange={(value) => updateTask(task, { activationQuality: value })}
+          />
+        </Field>
+        <AfterEffectField task={task} completion={completion} updateTask={updateTask} />
+      </div>
+    );
+  }
+
+  if (responseKind === "skill_control") {
+    return (
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <Field label="Control quality">
+          <TaskSelect
+            value={completion.controlQuality}
+            options={controlQualityOptions}
+            onChange={(value) => updateTask(task, { controlQuality: value })}
+          />
+        </Field>
+        <AfterEffectField task={task} completion={completion} updateTask={updateTask} />
+      </div>
+    );
+  }
+
+  if (responseKind === "rom_flexion") {
+    return (
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <Field label="Limiting factor">
+          <TaskSelect
+            value={completion.limitingFactor}
+            options={taskFlexionLimitingFactorOptions}
+            onChange={(value) => updateTask(task, { limitingFactor: value })}
+          />
+        </Field>
+        <AfterEffectField task={task} completion={completion} updateTask={updateTask} />
+        <Field label="Flexion estimate" hint="Optional degrees">
+          <TaskNumberInput
+            value={completion.flexionEstimateDegrees}
+            max={160}
+            onChange={(value) => updateTask(task, { flexionEstimateDegrees: value })}
+          />
+        </Field>
+      </div>
+    );
+  }
+
+  if (responseKind === "rom_extension") {
+    return (
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <Field label="Extension after">
+          <TaskSelect
+            value={completion.extensionAfter}
+            options={extensionAfterOptions}
+            onChange={(value) => updateTask(task, { extensionAfter: value })}
+          />
+        </Field>
+        <AfterEffectField task={task} completion={completion} updateTask={updateTask} />
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function AfterEffectField({
+  task,
+  completion,
+  updateTask,
+}: {
+  task: PrescribedTask;
+  completion: PrescribedTaskCompletion;
+  updateTask: (task: PrescribedTask, patch: Partial<PrescribedTaskCompletion>) => void;
+}) {
+  return (
+    <Field label="After-effect">
+      <TaskSelect
+        value={completion.afterEffect}
+        options={afterEffectOptions}
+        onChange={(value) => updateTask(task, { afterEffect: value })}
+      />
+    </Field>
   );
 }
 
@@ -964,12 +1355,7 @@ function CheckInPage() {
   const e = savedEvening ?? createDefaultEveningCheckIn(selectedDate, phase.id);
   const prescribedTasks = dailyQuestsForDate(s, selectedDate)
     .flatMap((quest) => quest.prescribedTasks ?? [])
-    .filter(
-      (task) =>
-        task.category !== "check_in_morning" &&
-        task.category !== "check_in_evening" &&
-        task.category !== "skill_test",
-    );
+    .filter((task) => task.category !== "check_in_morning" && task.category !== "check_in_evening");
   const skillTests = skillTestsForDate(s, selectedDate);
   const hasMorning = Boolean(savedMorning);
   const hasEvening = Boolean(savedEvening);

@@ -384,6 +384,29 @@ export interface PrescribedTaskPrescription {
 
 export type PrescribedTaskCompletionStatus = "not_started" | "completed" | "partial" | "skipped";
 
+export type PrescribedTaskPartialEstimate = "less_than_half" | "about_half" | "most" | "custom";
+export type PrescribedTaskAfterEffect = "no_issue" | "mild_settled" | "worse";
+export type PrescribedTaskGaitQuality = "clean" | "slight_limp" | "worse_limp";
+export type PrescribedTaskSupportUsed = "none" | "one_crutch" | "two_crutches" | "mixed";
+export type PrescribedTaskActivationQuality =
+  | "could_not_find"
+  | "weak_repeatable"
+  | "good_control"
+  | "faded";
+export type PrescribedTaskControlQuality = "clean" | "slight_lag" | "clear_lag" | "not_sure";
+export type PrescribedTaskFlexionLimitingFactor =
+  | "comfortable"
+  | "incision_scar_tension"
+  | "swelling_fullness"
+  | "joint_pinch"
+  | "pain"
+  | "unknown";
+export type PrescribedTaskExtensionAfter =
+  | "relaxed_neutral"
+  | "stiff"
+  | "painful_pinching"
+  | "not_tested";
+
 export interface PrescribedTaskCompletion {
   status: PrescribedTaskCompletionStatus;
   actualSets?: number;
@@ -392,6 +415,17 @@ export interface PrescribedTaskCompletion {
   painDuring?: number;
   painAfter?: number;
   qualityScore?: number;
+  partialEstimate?: PrescribedTaskPartialEstimate;
+  limitationReason?: string;
+  skippedReason?: string;
+  afterEffect?: PrescribedTaskAfterEffect;
+  gaitQuality?: PrescribedTaskGaitQuality;
+  supportUsed?: PrescribedTaskSupportUsed;
+  activationQuality?: PrescribedTaskActivationQuality;
+  controlQuality?: PrescribedTaskControlQuality;
+  limitingFactor?: PrescribedTaskFlexionLimitingFactor;
+  flexionEstimateDegrees?: number;
+  extensionAfter?: PrescribedTaskExtensionAfter;
   notes?: string;
 }
 
@@ -4527,6 +4561,10 @@ function finiteOptionalNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function optionalEnumValue<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
+  return typeof value === "string" && allowed.includes(value as T) ? (value as T) : undefined;
+}
+
 function defaultTaskCompletion(
   patch: Partial<PrescribedTaskCompletion> = {},
 ): PrescribedTaskCompletion {
@@ -4542,6 +4580,57 @@ function defaultTaskCompletion(
     painDuring: finiteOptionalNumber(patch.painDuring),
     painAfter: finiteOptionalNumber(patch.painAfter),
     qualityScore: finiteOptionalNumber(patch.qualityScore),
+    partialEstimate: optionalEnumValue<PrescribedTaskPartialEstimate>(patch.partialEstimate, [
+      "less_than_half",
+      "about_half",
+      "most",
+      "custom",
+    ]),
+    limitationReason: patch.limitationReason,
+    skippedReason: patch.skippedReason,
+    afterEffect: optionalEnumValue<PrescribedTaskAfterEffect>(patch.afterEffect, [
+      "no_issue",
+      "mild_settled",
+      "worse",
+    ]),
+    gaitQuality: optionalEnumValue<PrescribedTaskGaitQuality>(patch.gaitQuality, [
+      "clean",
+      "slight_limp",
+      "worse_limp",
+    ]),
+    supportUsed: optionalEnumValue<PrescribedTaskSupportUsed>(patch.supportUsed, [
+      "none",
+      "one_crutch",
+      "two_crutches",
+      "mixed",
+    ]),
+    activationQuality: optionalEnumValue<PrescribedTaskActivationQuality>(patch.activationQuality, [
+      "could_not_find",
+      "weak_repeatable",
+      "good_control",
+      "faded",
+    ]),
+    controlQuality: optionalEnumValue<PrescribedTaskControlQuality>(patch.controlQuality, [
+      "clean",
+      "slight_lag",
+      "clear_lag",
+      "not_sure",
+    ]),
+    limitingFactor: optionalEnumValue<PrescribedTaskFlexionLimitingFactor>(patch.limitingFactor, [
+      "comfortable",
+      "incision_scar_tension",
+      "swelling_fullness",
+      "joint_pinch",
+      "pain",
+      "unknown",
+    ]),
+    flexionEstimateDegrees: finiteOptionalNumber(patch.flexionEstimateDegrees),
+    extensionAfter: optionalEnumValue<PrescribedTaskExtensionAfter>(patch.extensionAfter, [
+      "relaxed_neutral",
+      "stiff",
+      "painful_pinching",
+      "not_tested",
+    ]),
     notes: patch.notes,
   };
 }

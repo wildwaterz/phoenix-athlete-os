@@ -405,19 +405,38 @@ function prescriptionLines(task: PrescribedTask): string[] {
 
 function formatTaskCompletion(task: PrescribedTask): string {
   const c = task.completion;
+  const planned = prescriptionLines(task);
   const actual = [
     c.actualSets == null ? "" : `${c.actualSets} sets`,
     c.actualReps == null ? "" : `${c.actualReps} reps`,
     c.actualDurationMinutes == null ? "" : `${c.actualDurationMinutes} min`,
   ].filter(Boolean);
   const response = [
-    c.painDuring == null ? "" : `pain during ${c.painDuring}/10`,
-    c.painAfter == null ? "" : `pain after ${c.painAfter}/10`,
-    c.qualityScore == null ? "" : `quality ${c.qualityScore}/5`,
+    c.afterEffect ? `after-effect ${formatPacketValue(c.afterEffect)}` : "",
+    c.gaitQuality ? `gait ${formatPacketValue(c.gaitQuality)}` : "",
+    c.supportUsed ? `support ${formatPacketValue(c.supportUsed)}` : "",
+    c.activationQuality ? `activation ${formatPacketValue(c.activationQuality)}` : "",
+    c.controlQuality ? `control ${formatPacketValue(c.controlQuality)}` : "",
+    c.limitingFactor ? `limiting factor ${formatPacketValue(c.limitingFactor)}` : "",
+    c.flexionEstimateDegrees == null ? "" : `flexion estimate ${c.flexionEstimateDegrees}°`,
+    c.extensionAfter ? `extension after ${formatPacketValue(c.extensionAfter)}` : "",
   ].filter(Boolean);
   return [
-    c.status,
-    actual.length ? `actual ${actual.join(", ")}` : "",
+    planned.length ? `prescribed ${planned.join("; ")}` : "prescribed dose not specified",
+    `status ${formatPacketValue(c.status)}`,
+    c.status === "completed" ? "actual prescribed dose completed" : "",
+    c.status === "partial" && c.partialEstimate
+      ? `partial estimate ${formatPacketValue(c.partialEstimate)}`
+      : "",
+    c.status === "partial" && c.limitationReason
+      ? `limitation ${formatPacketValue(c.limitationReason)}`
+      : "",
+    c.status === "partial" && c.partialEstimate === "custom" && actual.length
+      ? `custom actual ${actual.join(", ")}`
+      : "",
+    c.status === "skipped" && c.skippedReason
+      ? `skipped reason ${formatPacketValue(c.skippedReason)}`
+      : "",
     response.length ? response.join(", ") : "",
     c.notes ? `notes: ${c.notes}` : "",
   ]
