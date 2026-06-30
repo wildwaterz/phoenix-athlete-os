@@ -376,10 +376,15 @@ function Dashboard() {
               <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span>Mission progress</span>
                 <span className="font-medium text-foreground">
-                  {milestoneProg.done} of {milestoneProg.total} milestones complete
+                  {milestoneProg.done} of {milestoneProg.total} criteria met
                 </span>
               </div>
               <ProgressBar value={milestoneProg.pct} />
+              {milestoneProg.remainingText && (
+                <div className="mt-1.5 text-[11px] text-muted-foreground">
+                  Remaining · <span className="text-foreground">{milestoneProg.remainingText}</span>
+                </div>
+              )}
             </div>
             <div className="mt-4 text-xs text-muted-foreground">
               Next unlock · <span className="text-foreground">{mission.nextUnlock}</span>

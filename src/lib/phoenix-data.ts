@@ -233,7 +233,43 @@ export interface Mission {
   maintenanceWhenComplete?: boolean;
 }
 
-export type MissionStatus = "locked" | "active" | "complete" | "maintenance" | "blocked";
+export type MissionStatus =
+  | "locked"
+  | "active"
+  | "pending_confirmation"
+  | "complete"
+  | "maintenance"
+  | "blocked";
+
+export type MissionCriterionState =
+  | "locked"
+  | "not_started"
+  | "in_progress"
+  | "pending_confirmation"
+  | "achieved"
+  | "blocked";
+
+export type MissionCriterionEvidenceSource =
+  | "check_in"
+  | "coach_import"
+  | "task_response"
+  | "manual"
+  | "milestone"
+  | "not_assessed";
+
+export interface MissionCriterion {
+  id: string;
+  title: string;
+  evidenceRuleDescription: string;
+  requiredCount?: number;
+  currentCount?: number;
+  state: MissionCriterionState;
+  linkedMilestoneIds?: string[];
+  lastEvidenceDate?: string;
+  evidenceSummary?: string;
+  evidenceSource?: MissionCriterionEvidenceSource;
+  remainingText?: string;
+}
 
 export interface Milestone {
   id: string;
@@ -1542,7 +1578,7 @@ export const MISSIONS: Mission[] = [
     tagline: "Reclaim comfortable extension and flexion.",
     phaseId: "activation-early-rom",
     trackIds: ["rom", "symptoms", "activation"],
-    objective: "Restore comfortable extension and flexion without increasing symptoms.",
+    objective: "Maintain neutral extension and restore comfortable flexion without symptom flare.",
     whyItMatters:
       "The knee needs both straightening and bending capacity for walking, sitting, stairs, biking, and later training.",
     why: "Lost range changes gait, loads other joints, and blocks later training.",
@@ -1567,7 +1603,7 @@ export const MISSIONS: Mission[] = [
     tagline: "Improve gait quality without chasing independence.",
     phaseId: "activation-early-rom",
     trackIds: ["walking-movement", "symptoms"],
-    objective: "Improve walking quality and reduce support only when mechanics stay clean.",
+    objective: "Walk around the house with clean mechanics, using the least support needed.",
     whyItMatters:
       "Dropping support too early can reinforce compensation. Better walking matters more than faster independence.",
     why: "Quality gait restores confidence and protects the knee from avoidable swelling response.",
@@ -3593,6 +3629,15 @@ export function currentCampaign(s: PhoenixState): Campaign {
   return s.campaign;
 }
 
+const MISSION_CRITERION_STATE_SCORES: Record<MissionCriterionState, number> = {
+  locked: 0,
+  not_started: 0,
+  in_progress: 40,
+  pending_confirmation: 75,
+  achieved: 100,
+  blocked: 0,
+};
+
 const MILESTONE_STATE_SCORES: Record<MilestoneState, number> = {
   locked: 0,
   testable: 40,
@@ -3602,6 +3647,30 @@ const MILESTONE_STATE_SCORES: Record<MilestoneState, number> = {
   unlocked: 100,
   paused: 0,
 };
+
+function latestMilestoneEvidence(milestone: Milestone): MilestoneEvidence | undefined {
+  return milestone.evidence[milestone.evidence.length - 1];
+}
+
+function missionCriterionEvidenceSource(
+  evidence: MilestoneEvidence | undefined,
+): MissionCriterionEvidenceSource {
+  if (!evidence) return "milestone";
+  if (evidence.type === "check_in") return "check_in";
+  if (evidence.type === "quest_completion") return "task_response";
+  if (evidence.type === "coach_note" || evidence.type === "coach_plan") return "coach_import";
+  return "manual";
+}
+
+function missionCriterionStateFromMilestone(state: MilestoneState): MissionCriterionState {
+  if (state === "unlocked" || state === "unlocked_progressing") return "achieved";
+  if (state === "test_passed_pending_confirmation" || state === "observation_passed") {
+    return "pending_confirmation";
+  }
+  if (state === "testable") return "in_progress";
+  if (state === "paused") return "blocked";
+  return "not_started";
+}
 
 function isMissionCompleteMilestone(state: MilestoneState): boolean {
   return state === "unlocked" || state === "unlocked_progressing";
@@ -3616,6 +3685,465 @@ function missionLinkedMilestones(s: PhoenixState, mission: Mission): Milestone[]
   return mission.milestoneIds
     .map((id) => byId.get(normalizeMilestoneId(id)))
     .filter((milestone): milestone is Milestone => Boolean(milestone));
+}
+
+function milestoneById(s: PhoenixState, id: string): Milestone | undefined {
+  const normalized = normalizeMilestoneId(id);
+  return s.milestones.find((milestone) => milestone.id === normalized);
+}
+
+function criterionFromMilestone(
+  milestone: Milestone | undefined,
+  input: Pick<MissionCriterion, "id" | "title" | "evidenceRuleDescription"> &
+    Partial<MissionCriterion>,
+): MissionCriterion {
+  if (!milestone) {
+    return {
+      ...input,
+      state: "locked",
+      evidenceSummary: "Milestone not found.",
+      evidenceSource: "not_assessed",
+      remainingText: input.remainingText ?? "Link this criterion to a real milestone.",
+    };
+  }
+  const evidence = latestMilestoneEvidence(milestone);
+  const state = missionCriterionStateFromMilestone(milestone.state);
+  return {
+    ...input,
+    linkedMilestoneIds: input.linkedMilestoneIds ?? [milestone.id],
+    state,
+    currentCount: input.currentCount,
+    requiredCount: input.requiredCount,
+    lastEvidenceDate: input.lastEvidenceDate ?? evidence?.date ?? milestone.unlockedAt,
+    evidenceSummary: input.evidenceSummary ?? milestone.evidenceSummary ?? evidence?.summary,
+    evidenceSource: input.evidenceSource ?? missionCriterionEvidenceSource(evidence),
+    remainingText:
+      state === "achieved"
+        ? undefined
+        : (input.remainingText ??
+          (state === "pending_confirmation"
+            ? "Confirm evening and next-morning response before this becomes fully achieved."
+            : state === "in_progress"
+              ? "Record the test/task result and required response evidence."
+              : state === "blocked"
+                ? "Resolve the paused or blocked milestone before progressing."
+                : `Needs evidence for: ${milestone.unlockCriteria.join("; ")}.`)),
+  };
+}
+
+function sortedMorningCheckIns(s: PhoenixState): MorningCheckIn[] {
+  return [...allMorningCheckIns(s)].sort((a, b) =>
+    dailyRecordDate(a) < dailyRecordDate(b) ? 1 : -1,
+  );
+}
+
+function sortedEveningCheckIns(s: PhoenixState): EveningCheckIn[] {
+  return [...allEveningCheckIns(s)].sort((a, b) =>
+    dailyRecordDate(a) < dailyRecordDate(b) ? 1 : -1,
+  );
+}
+
+function localDatePlusDays(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return getLocalDateKey(date);
+}
+
+function consecutiveMorningCount(
+  s: PhoenixState,
+  predicate: (morning: MorningCheckIn) => boolean,
+  requiredCount: number,
+): { count: number; lastDate?: string } {
+  let count = 0;
+  let lastDate: string | undefined;
+  for (const morning of sortedMorningCheckIns(s)) {
+    if (!predicate(morning)) break;
+    count += 1;
+    lastDate = lastDate ?? dailyRecordDate(morning);
+    if (count >= requiredCount) break;
+  }
+  return { count, lastDate };
+}
+
+function latestMorningWithField<T>(
+  s: PhoenixState,
+  getter: (morning: MorningCheckIn) => T | undefined,
+): { value?: T; date?: string } {
+  for (const morning of sortedMorningCheckIns(s)) {
+    const value = getter(morning);
+    if (value != null) return { value, date: dailyRecordDate(morning) };
+  }
+  return {};
+}
+
+function countToleratedTaskSessions(
+  s: PhoenixState,
+  taskIdFragments: string[],
+  requiredCount: number,
+): { count: number; lastDate?: string } {
+  const sessions = Object.entries(s.prescribedTaskCompletions ?? {})
+    .flatMap(([date, completions]) =>
+      Object.entries(completions).map(([taskId, completion]) => ({ date, taskId, completion })),
+    )
+    .filter(({ taskId, completion }) => {
+      const normalizedTaskId = taskId.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      const matches = taskIdFragments.some((fragment) => normalizedTaskId.includes(fragment));
+      const completedEnough = completion.status === "completed" || completion.status === "partial";
+      const tolerated =
+        completion.afterEffect !== "worse" &&
+        completion.limitingFactor !== "joint_pinch" &&
+        completion.limitingFactor !== "pain" &&
+        completion.extensionAfter !== "painful_pinching";
+      return matches && completedEnough && tolerated;
+    })
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  return {
+    count: Math.min(sessions.length, requiredCount),
+    lastDate: sessions[0]?.date,
+  };
+}
+
+function countCriterionState(count: number, requiredCount: number): MissionCriterionState {
+  if (count >= requiredCount) return "achieved";
+  if (count > 0) return "in_progress";
+  return "not_started";
+}
+
+function countCriterion({
+  id,
+  title,
+  evidenceRuleDescription,
+  requiredCount,
+  currentCount,
+  lastEvidenceDate,
+  evidenceSummary,
+  evidenceSource,
+  remainingText,
+  linkedMilestoneIds,
+}: Omit<MissionCriterion, "state"> & { requiredCount: number; currentCount: number }) {
+  const state = countCriterionState(currentCount, requiredCount);
+  return {
+    id,
+    title,
+    evidenceRuleDescription,
+    requiredCount,
+    currentCount,
+    state,
+    linkedMilestoneIds,
+    lastEvidenceDate,
+    evidenceSummary:
+      evidenceSummary ?? `${Math.min(currentCount, requiredCount)} / ${requiredCount} recorded.`,
+    evidenceSource,
+    remainingText:
+      state === "achieved"
+        ? undefined
+        : (remainingText ??
+          `Needs ${requiredCount - Math.min(currentCount, requiredCount)} more matching check-in${
+            requiredCount - Math.min(currentCount, requiredCount) === 1 ? "" : "s"
+          }.`),
+  } satisfies MissionCriterion;
+}
+
+function achievedMilestoneCriterion(
+  milestone: Milestone | undefined,
+  input: Pick<MissionCriterion, "id" | "title" | "evidenceRuleDescription"> &
+    Partial<MissionCriterion>,
+): MissionCriterion | null {
+  if (!milestone || !isMissionCompleteMilestone(milestone.state)) return null;
+  return criterionFromMilestone(milestone, {
+    ...input,
+    state: "achieved",
+  });
+}
+
+function nextMorningConfirmationPending(
+  s: PhoenixState,
+  eveningPredicate: (evening: EveningCheckIn) => boolean,
+): { pending: boolean; eveningDate?: string } {
+  const evening = sortedEveningCheckIns(s).find(eveningPredicate);
+  if (!evening) return { pending: false };
+  const eveningDate = dailyRecordDate(evening);
+  return {
+    pending: !getMorningForDate(s, localDatePlusDays(eveningDate, 1)),
+    eveningDate,
+  };
+}
+
+function reclaimRangeCriteria(s: PhoenixState): MissionCriterion[] {
+  const extension = milestoneById(s, "m-extension-0");
+  const flexion = milestoneById(s, "m-flexion-comfortable");
+  const romTolerated = milestoneById(s, "m-rom-work-tolerated");
+  const flexionCount = consecutiveMorningCount(
+    s,
+    (morning) => morning.flexionStatus === "comfortable_gentle_bend",
+    2,
+  );
+  const heelSlideCount = countToleratedTaskSessions(s, ["heel_slides", "heel_slide"], 2);
+  const romPending = nextMorningConfirmationPending(
+    s,
+    (evening) =>
+      evening.flexionResponse === "felt_same" ||
+      evening.flexionResponse === "felt_better" ||
+      evening.extensionResponse === "felt_same" ||
+      evening.extensionResponse === "felt_better",
+  );
+
+  return [
+    criterionFromMilestone(extension, {
+      id: "extension-reaches-neutral",
+      title: "Extension reaches neutral",
+      evidenceRuleDescription:
+        "Extension status = reaches_neutral on current or recent check-in, confirmed by the Passive extension to neutral milestone.",
+      remainingText: "Needs a neutral extension check-in or coach-confirmed milestone update.",
+    }),
+    achievedMilestoneCriterion(flexion, {
+      id: "flexion-comfortable-improving",
+      title: "Flexion comfortable or improving",
+      evidenceRuleDescription:
+        "Flexion comfort/status is comfortable_gentle_bend for 2 consecutive check-ins, or the linked milestone is unlocked_progressing/unlocked.",
+      requiredCount: 2,
+      currentCount: 2,
+    }) ??
+      countCriterion({
+        id: "flexion-comfortable-improving",
+        title: "Flexion comfortable or improving",
+        evidenceRuleDescription:
+          "Flexion comfort/status is comfortable_gentle_bend for 2 consecutive check-ins, or the linked milestone is unlocked_progressing/unlocked.",
+        requiredCount: 2,
+        currentCount: flexionCount.count,
+        lastEvidenceDate: flexionCount.lastDate,
+        evidenceSummary: `${flexionCount.count} / 2 stable flexion check-ins recorded.`,
+        evidenceSource: flexionCount.count > 0 ? "check_in" : "not_assessed",
+        linkedMilestoneIds: ["m-flexion-comfortable"],
+        remainingText:
+          flexionCount.count > 0
+            ? "Needs one more stable flexion check-in."
+            : "Needs flexion comfort recorded on morning check-ins.",
+      }),
+    achievedMilestoneCriterion(romTolerated, {
+      id: "heel-slides-tolerated",
+      title: "Heel slides tolerated",
+      evidenceRuleDescription:
+        "Heel slides completed or partial-tolerated for 2 sessions with no sharp pain, joint pinch, or worse after-effect.",
+      requiredCount: 2,
+      currentCount: 2,
+    }) ??
+      countCriterion({
+        id: "heel-slides-tolerated",
+        title: "Heel slides tolerated",
+        evidenceRuleDescription:
+          "Heel slides completed or partial-tolerated for 2 sessions with no sharp pain, joint pinch, or worse after-effect.",
+        requiredCount: 2,
+        currentCount: heelSlideCount.count,
+        lastEvidenceDate: heelSlideCount.lastDate,
+        evidenceSummary: `${heelSlideCount.count} / 2 tolerated heel-slide sessions recorded.`,
+        evidenceSource: heelSlideCount.count > 0 ? "task_response" : "not_assessed",
+        linkedMilestoneIds: ["m-rom-work-tolerated"],
+      }),
+    achievedMilestoneCriterion(romTolerated, {
+      id: "no-next-day-rom-response",
+      title: "No next-day ROM symptom response",
+      evidenceRuleDescription:
+        "Next-morning pain is not worse by more than 1 point, swelling is stable or improved, and extension is still neutral after ROM work.",
+    }) ?? {
+      id: "no-next-day-rom-response",
+      title: "No next-day ROM symptom response",
+      evidenceRuleDescription:
+        "Next-morning pain is not worse by more than 1 point, swelling is stable or improved, and extension is still neutral after ROM work.",
+      state: romPending.pending ? "pending_confirmation" : "not_started",
+      linkedMilestoneIds: ["m-rom-work-tolerated"],
+      lastEvidenceDate: romPending.eveningDate,
+      evidenceSummary: romPending.pending
+        ? "Evening ROM response exists; next-morning baseline is still needed."
+        : "No confirmed next-morning ROM response yet.",
+      evidenceSource: romPending.pending ? "check_in" : "not_assessed",
+      remainingText: romPending.pending
+        ? "Complete the next morning check-in to confirm the ROM response."
+        : "Needs evening ROM response plus next-morning confirmation.",
+    },
+  ];
+}
+
+function normalizeWalkingCriteria(s: PhoenixState): MissionCriterion[] {
+  const cleanWalking = milestoneById(s, "m-walking-quality");
+  const supportReduced = milestoneById(s, "m-support-reduced-clean-gait");
+  const walkingVolume = milestoneById(s, "m-walking-volume-no-response");
+  const confidenceCount = consecutiveMorningCount(
+    s,
+    (morning) => morning.walkingConfidence >= 4,
+    2,
+  );
+  const gaitAssessment = latestMorningWithField(s, (morning) =>
+    morning.gaitQuality && morning.gaitQuality !== "not_assessed" ? morning.gaitQuality : undefined,
+  );
+  const gaitCount = consecutiveMorningCount(
+    s,
+    (morning) =>
+      morning.gaitQuality === "mostly_clean" || morning.gaitQuality === "normal_for_current_phase",
+    2,
+  );
+
+  return [
+    achievedMilestoneCriterion(cleanWalking, {
+      id: "walking-confidence-adequate",
+      title: "Walking confidence adequate",
+      evidenceRuleDescription:
+        "Walking confidence >= 4/5 for 2 check-ins, or coach-imported Clean household walking milestone is unlocked.",
+      requiredCount: 2,
+      currentCount: 2,
+    }) ??
+      countCriterion({
+        id: "walking-confidence-adequate",
+        title: "Walking confidence adequate",
+        evidenceRuleDescription:
+          "Walking confidence >= 4/5 for 2 check-ins, or coach-imported Clean household walking milestone is unlocked.",
+        requiredCount: 2,
+        currentCount: confidenceCount.count,
+        lastEvidenceDate: confidenceCount.lastDate,
+        evidenceSummary: `${confidenceCount.count} / 2 walking-confidence check-ins >= 4/5.`,
+        evidenceSource: confidenceCount.count > 0 ? "check_in" : "not_assessed",
+        linkedMilestoneIds: ["m-walking-quality"],
+        remainingText:
+          confidenceCount.count > 0
+            ? "Needs one more walking-confidence check-in at 4/5 or better."
+            : "Needs walking confidence >= 4/5 on morning check-ins.",
+      }),
+    achievedMilestoneCriterion(cleanWalking, {
+      id: "gait-quality-clean",
+      title: "Gait quality clean",
+      evidenceRuleDescription:
+        "Gait quality = mostly_clean or normal_for_current_phase for 2 check-ins. If gait quality is missing, it stays not assessed.",
+      requiredCount: 2,
+      currentCount: 2,
+    }) ??
+      countCriterion({
+        id: "gait-quality-clean",
+        title: "Gait quality clean",
+        evidenceRuleDescription:
+          "Gait quality = mostly_clean or normal_for_current_phase for 2 check-ins. If gait quality is missing, it stays not assessed.",
+        requiredCount: 2,
+        currentCount: gaitCount.count,
+        lastEvidenceDate: gaitCount.lastDate ?? gaitAssessment.date,
+        evidenceSummary:
+          gaitAssessment.value == null
+            ? "Gait quality: not assessed yet."
+            : `${gaitCount.count} / 2 clean gait-quality check-ins recorded.`,
+        evidenceSource: gaitAssessment.value == null ? "not_assessed" : "check_in",
+        linkedMilestoneIds: ["m-walking-quality"],
+        remainingText:
+          gaitAssessment.value == null
+            ? "Needs gait quality entered in Morning Check-In."
+            : "Needs 2 gait-quality check-ins at mostly_clean or better.",
+      }),
+    criterionFromMilestone(supportReduced, {
+      id: "support-reduced-clean-mechanics",
+      title: "Support reduced only when mechanics remain clean",
+      evidenceRuleDescription:
+        "Support use may decrease only when gait quality remains mostly_clean or better.",
+      remainingText:
+        "Needs user report or task response showing support changes stayed quality-gated.",
+    }),
+    criterionFromMilestone(walkingVolume, {
+      id: "no-next-day-walking-response",
+      title: "No next-day walking symptom response",
+      evidenceRuleDescription:
+        "Walking task completed/tolerated and next-morning swelling/pain stable or improved.",
+      remainingText: "Needs tolerated walking task response plus next-morning confirmation.",
+    }),
+  ];
+}
+
+function wakeQuadCriteria(s: PhoenixState): MissionCriterion[] {
+  return [
+    criterionFromMilestone(milestoneById(s, "m-visible-quad-set"), {
+      id: "visible-quad-set",
+      title: "Visible quad set / kneecap raise",
+      evidenceRuleDescription: "Visible quad contraction or kneecap raise on command.",
+    }),
+    criterionFromMilestone(milestoneById(s, "m-repeatable-quad-activation"), {
+      id: "quad-sets-repeatable",
+      title: "Quad sets repeatable",
+      evidenceRuleDescription: "Quad contraction is repeatable without provoking symptoms.",
+    }),
+    criterionFromMilestone(milestoneById(s, "m-straight-leg-raise-testable"), {
+      id: "straight-leg-raise-testable",
+      title: "Straight leg raise testable",
+      evidenceRuleDescription:
+        "Pain is low, swelling is stable, extension reaches neutral, quad activation is present, and walking is not worsening.",
+    }),
+    criterionFromMilestone(milestoneById(s, "straight_leg_raise_no_lag"), {
+      id: "straight-leg-raise-no-lag",
+      title: "Straight Leg Raise - No Lag",
+      evidenceRuleDescription: "Straight leg raise is completed with no lag and stable response.",
+    }),
+  ];
+}
+
+function fallbackMissionCriteria(s: PhoenixState, mission: Mission): MissionCriterion[] {
+  const milestones = missionLinkedMilestones(s, mission);
+  if (milestones.length === 0) {
+    return mission.criteria.map((criterion, index) => ({
+      id: `${mission.id}-criterion-${index + 1}`,
+      title: criterion,
+      evidenceRuleDescription: criterion,
+      state: mission.status === "locked" ? "locked" : "not_started",
+      evidenceSource: "not_assessed",
+      remainingText: "Needs a linked milestone or explicit evidence rule.",
+    }));
+  }
+  return milestones.map((milestone) =>
+    criterionFromMilestone(milestone, {
+      id: `${mission.id}-${milestone.id}`,
+      title: milestone.title,
+      evidenceRuleDescription: milestone.unlockCriteria.join("; "),
+    }),
+  );
+}
+
+export function missionCriteriaForMission(s: PhoenixState, mission: Mission): MissionCriterion[] {
+  if (mission.id === "wake-the-quad") return wakeQuadCriteria(s);
+  if (mission.id === "restore-extension") return reclaimRangeCriteria(s);
+  if (mission.id === "normalize-walking") return normalizeWalkingCriteria(s);
+  return fallbackMissionCriteria(s, mission);
+}
+
+export function missionCriteriaProgress(criteria: MissionCriterion[]) {
+  const total = Math.max(criteria.length, 1);
+  const achieved = criteria.filter((criterion) => criterion.state === "achieved").length;
+  const pending = criteria.filter((criterion) => criterion.state === "pending_confirmation").length;
+  const blocked = criteria.filter((criterion) => criterion.state === "blocked").length;
+  const inProgress = criteria.filter((criterion) => criterion.state === "in_progress").length;
+  const score = criteria.reduce(
+    (sum, criterion) => sum + MISSION_CRITERION_STATE_SCORES[criterion.state],
+    0,
+  );
+  const progress = criteria.length ? Math.round(score / total) : 0;
+  const remaining =
+    criteria.find((criterion) => criterion.state === "blocked") ??
+    criteria.find((criterion) => criterion.state === "pending_confirmation") ??
+    criteria.find((criterion) => criterion.state === "in_progress") ??
+    criteria.find((criterion) => criterion.state === "not_started" || criterion.state === "locked");
+  return {
+    total,
+    achieved,
+    pending,
+    blocked,
+    inProgress,
+    progress,
+    remainingText: remaining?.remainingText,
+  };
+}
+
+function missionStatusFromCriteria(mission: Mission, criteria: MissionCriterion[]): MissionStatus {
+  if (criteria.length === 0) return "locked";
+  if (criteria.some((criterion) => criterion.state === "blocked")) return "blocked";
+  const allAchieved = criteria.every((criterion) => criterion.state === "achieved");
+  if (allAchieved) return mission.maintenanceWhenComplete ? "maintenance" : "complete";
+  if (criteria.some((criterion) => criterion.state === "pending_confirmation")) {
+    return "pending_confirmation";
+  }
+  if (criteria.some((criterion) => criterion.state === "in_progress")) return "active";
+  return "locked";
 }
 
 function missionProgressFromMilestones(milestones: Milestone[]): number {
@@ -3645,11 +4173,16 @@ function nextUnlockFromMilestones(mission: Mission, milestones: Milestone[]): st
 
 export function deriveMissionFromMilestones(s: PhoenixState, mission: Mission): Mission {
   const milestones = missionLinkedMilestones(s, mission);
-  const status = missionStatusFromMilestones(mission, milestones);
+  const criteria = missionCriteriaForMission(s, mission);
+  const criteriaProgress = missionCriteriaProgress(criteria);
+  const status = missionStatusFromCriteria(mission, criteria);
   return {
     ...mission,
     title: mission.title ?? mission.name,
-    progress: missionProgressFromMilestones(milestones),
+    progress:
+      status === "complete" || status === "maintenance"
+        ? 100
+        : criteriaProgress.progress || missionProgressFromMilestones(milestones),
     status,
     nextUnlock: nextUnlockFromMilestones(mission, milestones),
   };
@@ -3663,9 +4196,10 @@ export function derivedMissions(s: PhoenixState): Mission[] {
 export function currentMission(s: PhoenixState): Mission {
   const missions = derivedMissions(s);
   const selected = missions.find((mission) => mission.id === s.currentMissionId);
-  if (selected?.status === "active") return selected;
+  if (selected?.status === "active" || selected?.status === "pending_confirmation") return selected;
   return (
     missions.find((mission) => mission.status === "active") ??
+    missions.find((mission) => mission.status === "pending_confirmation") ??
     selected ??
     missions.find((mission) => mission.status === "maintenance") ??
     missions[0]
@@ -3674,7 +4208,9 @@ export function currentMission(s: PhoenixState): Mission {
 
 export function activeMissions(s: PhoenixState): Mission[] {
   const missions = derivedMissions(s);
-  const active = missions.filter((mission) => mission.status === "active");
+  const active = missions.filter(
+    (mission) => mission.status === "active" || mission.status === "pending_confirmation",
+  );
   return active.length ? active : [currentMission(s)];
 }
 
@@ -6936,12 +7472,15 @@ export function currentPhaseN(s: PhoenixState): number {
 
 export function missionMilestoneProgress(s: PhoenixState, missionId: MissionId) {
   const mission = derivedMissions(s).find((item) => item.id === missionId);
-  const list = mission
-    ? missionLinkedMilestones(s, mission)
-    : s.milestones.filter((milestone) => milestone.mission === missionId);
-  const total = Math.max(list.length, 1);
-  const done = list.filter((milestone) => isMissionCompleteMilestone(milestone.state)).length;
-  return { done, total, pct: missionProgressFromMilestones(list) };
+  const criteria = mission ? missionCriteriaForMission(s, mission) : [];
+  const summary = missionCriteriaProgress(criteria);
+  return {
+    done: summary.achieved,
+    total: summary.total,
+    pct: summary.progress,
+    pending: summary.pending,
+    remainingText: summary.remainingText,
+  };
 }
 
 export function todaysWin(
