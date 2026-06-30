@@ -768,7 +768,9 @@ function buildSystemHistory(s: PhoenixState): SystemHistoryItem[] {
   });
 
   s.milestones
-    .filter((milestone) => milestone.state === "unlocked")
+    .filter(
+      (milestone) => milestone.state === "unlocked" || milestone.state === "unlocked_progressing",
+    )
     .forEach((milestone) => {
       const date = localDateFromStoredValue(milestone.unlockedAt);
       items.push({

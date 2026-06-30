@@ -2,9 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, PageHeader, Surface } from "@/components/app-shell";
 import {
   createRecoveryIqEvent,
+  derivedMissions,
   getLocalDateKey,
   getUtcTimestamp,
-  MISSIONS,
   setState,
   upsertRecoveryIqEvent,
   usePhoenix,
@@ -24,6 +24,7 @@ export const Route = createFileRoute("/milestones")({
 
 function MilestonesPage() {
   const s = usePhoenix();
+  const missions = derivedMissions(s);
   const unlock = (id: string) =>
     setState((prev) => {
       const milestone = prev.milestones.find((mi) => mi.id === id);
@@ -77,8 +78,8 @@ function MilestonesPage() {
         description="Each milestone has a name, a reason it matters, and the evidence required to earn it."
       />
       <div className="space-y-8">
-        {MISSIONS.map((mission) => {
-          const items = s.milestones.filter((m) => m.mission === mission.id);
+        {missions.map((mission) => {
+          const items = s.milestones.filter((m) => m.missionId === mission.id);
           if (items.length === 0) return null;
           return (
             <section key={mission.id}>
@@ -89,7 +90,7 @@ function MilestonesPage() {
               <div className="grid gap-3 md:grid-cols-2">
                 {items.map((mi) => {
                   const Icon =
-                    mi.state === "unlocked"
+                    mi.state === "unlocked" || mi.state === "unlocked_progressing"
                       ? CheckCircle2
                       : mi.state === "locked" || mi.state === "paused"
                         ? Lock
@@ -100,9 +101,11 @@ function MilestonesPage() {
                         <div
                           className={cn(
                             "grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border",
-                            mi.state === "unlocked" && "bg-success/15 text-success",
+                            (mi.state === "unlocked" || mi.state === "unlocked_progressing") &&
+                              "bg-success/15 text-success",
                             (mi.state === "testable" ||
-                              mi.state === "test_passed_pending_confirmation") &&
+                              mi.state === "test_passed_pending_confirmation" ||
+                              mi.state === "observation_passed") &&
                               "bg-phoenix/15 text-phoenix",
                             (mi.state === "locked" || mi.state === "paused") &&
                               "text-muted-foreground",
@@ -121,6 +124,10 @@ function MilestonesPage() {
                           </div>
                           <p className="mt-1 text-sm text-muted-foreground">{mi.description}</p>
                           <p className="mt-2 text-xs">
+                            <span className="text-muted-foreground">Linked mission · </span>
+                            {mission.name}
+                          </p>
+                          <p className="mt-2 text-xs">
                             <span className="text-muted-foreground">Why it matters · </span>
                             {mi.why}
                           </p>
@@ -131,13 +138,23 @@ function MilestonesPage() {
                           {mi.evidence.length > 0 && (
                             <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                               {mi.evidence.slice(-3).map((item) => (
-                                <li key={`${item.date}-${item.summary}`}>- {item.summary}</li>
+                                <li key={`${item.date}-${item.summary}`}>
+                                  - {item.summary}
+                                  <span className="block pl-3 text-[11px]">
+                                    Source: {formatState(item.type)} · Date: {item.date} ·
+                                    Confidence: {formatState(item.confidence)}
+                                  </span>
+                                </li>
                               ))}
                             </ul>
                           )}
                           <p className="mt-2 text-xs">
                             <span className="text-muted-foreground">State · </span>
                             {formatState(mi.state)}
+                          </p>
+                          <p className="mt-1 text-xs">
+                            <span className="text-muted-foreground">Next step if confirmed · </span>
+                            {mi.nextStepIfConfirmed}
                           </p>
                           {mi.coachNotes && (
                             <div className="mt-3 rounded-lg border border-border bg-background/40 p-2.5 text-xs text-muted-foreground">

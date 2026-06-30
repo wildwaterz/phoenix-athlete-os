@@ -9,6 +9,7 @@ import {
   dailyCoachPlanForDate,
   dailyQuestsForDate,
   daysPostOp,
+  formatGaitQuality,
   getDetectedTimeZone,
   getEveningForDate,
   getLocalDateKey,
@@ -185,8 +186,12 @@ export function buildPacketMarkdown(
     lines.push(`- Swelling level: ${m.swellingLevel ?? m.swelling}/10`);
     lines.push(`- Swelling context: ${m.swellingContext ?? "unknown"}`);
     lines.push(`- Swelling trend: ${m.swellingTrend ?? "unknown"}`);
-    lines.push(`- Walking confidence: ${m.walkingConfidence}/5`);
-    lines.push(`- Gait quality: ${m.gaitQuality ?? "—"}/5`);
+    lines.push(
+      `- Walking confidence: ${m.walkingConfidence}/5 — how much the athlete trusts walking`,
+    );
+    lines.push(
+      `- Gait quality: ${formatGaitQuality(m.gaitQuality)} — how clean the walking pattern is`,
+    );
     lines.push(`- Extension status: ${formatPacketValue(m.extensionStatus)}`);
     lines.push(`- Flexion comfort/status: ${formatPacketValue(m.flexionStatus)}`);
     lines.push(`- Flexion limiting factor: ${formatPacketValue(m.flexionLimitingFactor)}`);
@@ -203,8 +208,8 @@ export function buildPacketMarkdown(
     lines.push(
       `- Pain: ${previous.pain}/10 · Swelling: ${previous.swellingLevel ?? previous.swelling}/10`,
     );
-    lines.push(`- Walking confidence: ${previous.walkingConfidence}/5`);
-    lines.push(`- Gait quality: ${previous.gaitQuality ?? "—"}/5`);
+    lines.push(`- Previous walking confidence: ${previous.walkingConfidence}/5`);
+    lines.push(`- Previous gait quality: ${formatGaitQuality(previous.gaitQuality)}`);
     lines.push(`- Extension status: ${formatPacketValue(previous.extensionStatus)}`);
     lines.push(`- Flexion comfort/status: ${formatPacketValue(previous.flexionStatus)}`);
     lines.push(`- Flexion limiting factor: ${formatPacketValue(previous.flexionLimitingFactor)}`);
@@ -336,7 +341,7 @@ export function buildPacketMarkdown(
   lines.push(`## Milestones`);
   s.milestones.forEach((mi) =>
     lines.push(
-      `- [${mi.state === "unlocked" ? "x" : " "}] **${mi.name}** — ${mi.state}${mi.unlockedAt ? ` (${mi.unlockedAt})` : ""}`,
+      `- [${mi.state === "unlocked" || mi.state === "unlocked_progressing" ? "x" : " "}] **${mi.name}** — ${mi.state}${mi.unlockedAt ? ` (${mi.unlockedAt})` : ""}`,
     ),
   );
   lines.push("");

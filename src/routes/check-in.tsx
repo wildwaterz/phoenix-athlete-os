@@ -6,6 +6,8 @@ import {
   createDefaultMorningCheckIn,
   dailyQuestsForDate,
   eveningCheckInFieldsForPhase,
+  GAIT_QUALITY_LABELS,
+  GAIT_QUALITY_OPTIONS,
   getEveningForDate,
   getLocalDateKey,
   getMorningForDate,
@@ -21,6 +23,7 @@ import {
   type EveningCheckIn,
   type FlexionLimitingFactor,
   type FlexionStatus,
+  type GaitQuality,
   type MorningCheckIn,
   type PrescribedTask,
   type PrescribedTaskActivationQuality,
@@ -289,13 +292,28 @@ function renderMorningField(
       );
     case "walking-confidence":
       return (
-        <FieldSlot field={field} hint="1 — 5">
+        <FieldSlot field={field} hint="Subjective trust, 1 — 5">
           <Slider
             value={m.walkingConfidence}
             onChange={(v) => updateMorning({ walkingConfidence: v })}
             min={1}
             max={5}
           />
+        </FieldSlot>
+      );
+    case "gait-quality":
+      return (
+        <FieldSlot field={field} hint="Walking pattern / compensation">
+          <SelectInput
+            value={m.gaitQuality ?? "not_assessed"}
+            onChange={(ev) => updateMorning({ gaitQuality: ev.target.value as GaitQuality })}
+          >
+            {GAIT_QUALITY_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {GAIT_QUALITY_LABELS[option]}
+              </option>
+            ))}
+          </SelectInput>
         </FieldSlot>
       );
     case "confidence-in-knee":

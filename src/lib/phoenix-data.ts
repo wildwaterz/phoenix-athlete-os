@@ -10,6 +10,9 @@ export type MissionId =
   | "wake-the-quad"
   | "restore-extension"
   | "normalize-walking"
+  | "controlled-weight-shift"
+  | "sit-to-stand-control"
+  | "step-and-stair-control"
   | "build-capacity"
   | "become-an-athlete-again";
 
@@ -52,6 +55,7 @@ export type CheckInFieldId =
   | "swelling-context"
   | "swelling-trend"
   | "walking-confidence"
+  | "gait-quality"
   | "confidence-in-knee"
   | "quad-activation-quality"
   | "extension-status"
@@ -81,6 +85,52 @@ export type FlexionLimitingFactor =
   | "swelling_limited"
   | "pain_limited"
   | "unknown";
+
+export type GaitQuality =
+  | "heavy_limp_needs_support"
+  | "noticeable_limp"
+  | "slow_but_controlled"
+  | "mostly_clean"
+  | "normal_for_current_phase"
+  | "not_assessed";
+
+export const GAIT_QUALITY_OPTIONS: GaitQuality[] = [
+  "heavy_limp_needs_support",
+  "noticeable_limp",
+  "slow_but_controlled",
+  "mostly_clean",
+  "normal_for_current_phase",
+  "not_assessed",
+];
+
+export const GAIT_QUALITY_LABELS: Record<GaitQuality, string> = {
+  heavy_limp_needs_support: "Heavy limp / needs support",
+  noticeable_limp: "Noticeable limp",
+  slow_but_controlled: "Slow but controlled",
+  mostly_clean: "Mostly clean",
+  normal_for_current_phase: "Normal for current phase",
+  not_assessed: "Not assessed",
+};
+
+export function formatGaitQuality(value: GaitQuality | undefined): string {
+  if (!value || value === "not_assessed") return "not assessed";
+  return GAIT_QUALITY_LABELS[value];
+}
+
+function normalizeGaitQuality(value: unknown): GaitQuality {
+  return GAIT_QUALITY_OPTIONS.includes(value as GaitQuality)
+    ? (value as GaitQuality)
+    : "not_assessed";
+}
+
+function gaitQualityScore(value: GaitQuality | undefined): number | undefined {
+  if (value === "heavy_limp_needs_support") return 1;
+  if (value === "noticeable_limp") return 2;
+  if (value === "slow_but_controlled") return 3;
+  if (value === "mostly_clean") return 4;
+  if (value === "normal_for_current_phase") return 5;
+  return undefined;
+}
 
 export type MetricDirection = "lower-better" | "higher-better";
 
@@ -164,6 +214,7 @@ export interface Phase {
 
 export interface Mission {
   id: MissionId;
+  title: string;
   name: string;
   tagline: string;
   phaseId: PhaseId;
@@ -178,8 +229,11 @@ export interface Mission {
   milestoneIds: string[];
   possibleQuestIds: string[];
   nextUnlock: string;
-  status: "locked" | "active" | "complete";
+  status: MissionStatus;
+  maintenanceWhenComplete?: boolean;
 }
+
+export type MissionStatus = "locked" | "active" | "complete" | "maintenance" | "blocked";
 
 export interface Milestone {
   id: string;
@@ -207,7 +261,9 @@ export interface Milestone {
 export type MilestoneState =
   | "locked"
   | "testable"
+  | "observation_passed"
   | "test_passed_pending_confirmation"
+  | "unlocked_progressing"
   | "unlocked"
   | "paused";
 
@@ -237,7 +293,7 @@ export interface MorningCheckIn {
   swellingTrend?: SwellingTrend;
   swellingContext?: SwellingContext;
   walkingConfidence: number;
-  gaitQuality?: number;
+  gaitQuality?: GaitQuality;
   extensionStatus: ExtensionStatus;
   flexionStatus: FlexionStatus;
   flexionLimitingFactor?: FlexionLimitingFactor;
@@ -918,6 +974,7 @@ const CHECK_IN_FIELD_LABELS: Record<CheckInFieldId, string> = {
   "swelling-context": "Swelling context",
   "swelling-trend": "Swelling trend",
   "walking-confidence": "Walking confidence",
+  "gait-quality": "Gait quality",
   "confidence-in-knee": "Confidence in knee",
   "quad-activation-quality": "Quad activation quality",
   "extension-status": "Extension status",
@@ -958,6 +1015,7 @@ export const PHASE_CONFIGS: Phase[] = [
       "swelling-context",
       "swelling-trend",
       "walking-confidence",
+      "gait-quality",
       "extension-status",
       "flexion-status",
       "sleep-hours",
@@ -1107,6 +1165,7 @@ export const PHASE_CONFIGS: Phase[] = [
       "swelling-context",
       "swelling-trend",
       "walking-confidence",
+      "gait-quality",
       "extension-status",
       "flexion-status",
       "sleep-hours",
@@ -1420,6 +1479,7 @@ export const PHASE_CONFIGS: Phase[] = [
 export const MISSIONS: Mission[] = [
   {
     id: "calm-the-knee",
+    title: "Calm the Knee",
     name: "Calm the Knee",
     tagline: "Reduce inflammation. Reclaim baseline.",
     phaseId: "acute-response",
@@ -1435,13 +1495,20 @@ export const MISSIONS: Mission[] = [
       "Swelling ≤ 2/10 morning baseline",
       "Sleep ≥ 7h average",
     ],
-    milestoneIds: ["m-pain-baseline", "m-swelling-controlled"],
+    milestoneIds: [
+      "m-pain-baseline",
+      "m-swelling-controlled",
+      "m-walking-possible-support",
+      "m-sleep-not-severely-disrupted",
+    ],
     possibleQuestIds: ["ankle-pumps", "assisted-walking", "swelling-control", "gentle-quad-check"],
-    nextUnlock: "Wake the Quad",
+    nextUnlock: "Maintain calm baseline",
     status: "complete",
+    maintenanceWhenComplete: true,
   },
   {
     id: "wake-the-quad",
+    title: "Wake the Quad",
     name: "Wake the Quad",
     tagline: "Restore neuromuscular control.",
     phaseId: "activation-early-rom",
@@ -1452,20 +1519,26 @@ export const MISSIONS: Mission[] = [
     why: "Without an active quad, the knee can't stabilize under load and extension won't return.",
     estDuration: "2–4 weeks",
     phase: "Phase 2 · Activation + Early ROM",
-    progress: 64,
+    progress: 100,
     criteria: [
       "Quad activation 4/5 on demand",
       "Straight leg raise with no lag",
       "Terminal knee extension to neutral",
     ],
-    milestoneIds: ["m-quad-activation-4", "straight_leg_raise_no_lag"],
+    milestoneIds: [
+      "m-visible-quad-set",
+      "m-repeatable-quad-activation",
+      "m-straight-leg-raise-testable",
+      "straight_leg_raise_no_lag",
+    ],
     possibleQuestIds: ["quad-activation", "activation-check-in", "supported-walking"],
-    nextUnlock: "Restore Range",
-    status: "active",
+    nextUnlock: "Controlled Weight Shift",
+    status: "complete",
   },
   {
     id: "restore-extension",
-    name: "Restore Range",
+    title: "Reclaim Range",
+    name: "Reclaim Range",
     tagline: "Reclaim comfortable extension and flexion.",
     phaseId: "activation-early-rom",
     trackIds: ["rom", "symptoms", "activation"],
@@ -1475,20 +1548,22 @@ export const MISSIONS: Mission[] = [
     why: "Lost range changes gait, loads other joints, and blocks later training.",
     estDuration: "3–6 weeks",
     phase: "Phase 2 · Activation + Early ROM",
-    progress: 22,
+    progress: 93,
     criteria: [
       "Extension trending toward neutral",
       "Flexion improving or stable across check-ins",
       "Heel slides tolerated without sharp pain or next-day swelling increase",
     ],
-    milestoneIds: ["m-extension-0", "m-flexion-comfortable"],
+    milestoneIds: ["m-extension-0", "m-flexion-comfortable", "m-rom-work-tolerated"],
     possibleQuestIds: ["gentle-extension-exposure", "gentle-heel-slides", "rom-status-check"],
-    nextUnlock: "Normalize Walking",
-    status: "active",
+    nextUnlock: "Maintain neutral extension",
+    status: "complete",
+    maintenanceWhenComplete: true,
   },
   {
     id: "normalize-walking",
-    name: "Normalize Walking",
+    title: "Normalize Household Walking",
+    name: "Normalize Household Walking",
     tagline: "Improve gait quality without chasing independence.",
     phaseId: "activation-early-rom",
     trackIds: ["walking-movement", "symptoms"],
@@ -1498,52 +1573,114 @@ export const MISSIONS: Mission[] = [
     why: "Quality gait restores confidence and protects the knee from avoidable swelling response.",
     estDuration: "2–5 weeks",
     phase: "Phase 2 · Activation + Early ROM",
-    progress: 15,
+    progress: 93,
     criteria: [
       "Walking confidence improving",
       "Support reduced only when mechanics remain clean",
       "No next-day swelling or pain increase from walking volume",
     ],
-    milestoneIds: ["m-walking-quality"],
+    milestoneIds: [
+      "m-walking-confidence-improving",
+      "m-walking-quality",
+      "m-support-reduced-clean-gait",
+      "m-walking-volume-no-response",
+    ],
     possibleQuestIds: ["supported-walking", "comfortable-walking", "walking-response-log"],
-    nextUnlock: "Build Capacity",
+    nextUnlock: "Weight-shift control",
+    status: "complete",
+    maintenanceWhenComplete: true,
+  },
+  {
+    id: "controlled-weight-shift",
+    title: "Controlled Weight Shift",
+    name: "Controlled Weight Shift",
+    tagline: "Confirm basic control before capacity work.",
+    phaseId: "activation-early-rom",
+    trackIds: ["walking-movement", "activation", "symptoms"],
+    objective:
+      "Test quiet, controlled weight shift without buckling, guarding, or symptom response.",
+    whyItMatters:
+      "Weight shift is the bridge between clean household gait and later sit-to-stand or step work.",
+    why: "Control comes before load. A quiet weight shift proves the knee can accept careful force without compensation.",
+    estDuration: "Current",
+    phase: "Phase 2B · Control + Tolerance Confirmation",
+    progress: 8,
+    criteria: [
+      "Weight-shift control is testable",
+      "Symptoms stay quiet during the shift",
+      "No buckling, guarding, or worse walking afterward",
+      "No next-day swelling or pain increase",
+    ],
+    milestoneIds: [
+      "m-weight-shift-control",
+      "m-quiet-symptoms-during-shift",
+      "m-no-buckling-guarding",
+      "m-walking-clean-after-shift",
+      "m-weight-shift-no-next-day-response",
+    ],
+    possibleQuestIds: ["supported-walking", "walking-response-log"],
+    nextUnlock: "Weight-shift control",
     status: "active",
   },
   {
-    id: "build-capacity",
-    name: "Build Capacity",
-    tagline: "Tissue tolerance. Volume. Confidence.",
+    id: "sit-to-stand-control",
+    title: "Sit-to-Stand Control",
+    name: "Sit-to-Stand Control",
+    tagline: "Earn basic capacity without compensation.",
     phaseId: "movement-capacity",
-    trackIds: ["capacity", "walking-movement", "symptoms"],
-    objective: "Tolerate progressive load across daily and training sessions.",
-    whyItMatters:
-      "Capacity is proven by what the knee tolerates today and how it responds tomorrow.",
-    why: "Capacity is the bridge from rehab to performance. Earn the right to train hard.",
-    estDuration: "6–10 weeks",
+    trackIds: ["capacity", "walking-movement", "activation", "symptoms"],
+    objective:
+      "Control sit-to-stand from a high chair without collapse, shift, or symptom response.",
+    whyItMatters: "Sit-to-stand is the first meaningful capacity pattern after basic gait control.",
+    why: "The knee needs quiet force acceptance before step-ups, stairs, and later strength work.",
+    estDuration: "Upcoming",
     phase: "Phase 3 · Range / Basic Capacity",
-    progress: 0,
-    criteria: ["Single-leg press ≥ 1× BW", "30-min walk pain-free", "Stairs reciprocal"],
-    milestoneIds: ["m-walk-30"],
-    possibleQuestIds: ["capacity-walk", "strength-tolerance", "load-response-log"],
-    nextUnlock: "Become an Athlete Again",
+    progress: 13,
+    criteria: [
+      "Weight shift tolerated",
+      "High-chair sit-to-stand controlled",
+      "No knee collapse or hip shift",
+      "No symptom response",
+    ],
+    milestoneIds: [
+      "m-weight-shift-tolerated",
+      "m-high-chair-sit-to-stand",
+      "m-no-knee-collapse-hip-shift",
+      "m-sit-to-stand-no-response",
+    ],
+    possibleQuestIds: ["load-response-log"],
+    nextUnlock: "Weight shift tolerated",
     status: "locked",
   },
   {
-    id: "become-an-athlete-again",
-    name: "Become an Athlete Again",
-    tagline: "Sport-specific readiness.",
-    phaseId: "return-preparation",
-    trackIds: ["return-to-sport", "capacity", "symptoms"],
-    objective: "Return-to-sport criteria met across strength, power, and confidence.",
-    whyItMatters: "Sport readiness requires repeatable performance, not one good session.",
-    why: "Return-to-sport is a test you pass, not a date you hit.",
-    estDuration: "Ongoing",
-    phase: "Phase 5 · Return to Sport",
+    id: "step-and-stair-control",
+    title: "Step and Stair Control",
+    name: "Step and Stair Control",
+    tagline: "Turn observation into controlled stair capacity.",
+    phaseId: "movement-capacity",
+    trackIds: ["capacity", "walking-movement", "symptoms"],
+    objective:
+      "Progress from assisted stair observation to controlled step and stair work only when tolerated.",
+    whyItMatters:
+      "A single assisted stair ascent is useful evidence, but it does not unlock stair training by itself.",
+    why: "Stairs combine range, control, confidence, and load. They need confirmation before becoming training.",
+    estDuration: "Upcoming",
+    phase: "Phase 3 · Range / Basic Capacity",
     progress: 0,
-    criteria: ["LSI ≥ 90% across battery", "Hop tests symmetrical", "Confidence 5/5"],
-    milestoneIds: [],
-    possibleQuestIds: ["readiness-scan", "controlled-conditioning"],
-    nextUnlock: "Long-term performance",
+    criteria: [
+      "Assisted stair ascent observation passed",
+      "Controlled low step-up",
+      "Stair ascent with support and no compensation",
+      "No next-day response",
+    ],
+    milestoneIds: [
+      "m-assisted-stair-ascent",
+      "m-controlled-low-step-up",
+      "m-stair-ascent-supported-no-compensation",
+      "m-stair-no-next-day-response",
+    ],
+    possibleQuestIds: ["load-response-log"],
+    nextUnlock: "Controlled low step-up",
     status: "locked",
   },
 ];
@@ -1604,26 +1741,103 @@ const seedMilestones: Milestone[] = [
     unlockedAt: "2025-06-15",
   },
   {
-    id: "m-quad-activation-4",
-    title: "Quad activation 4/5",
+    id: "m-walking-possible-support",
+    title: "Walking possible with support",
+    mission: "calm-the-knee",
+    missionId: "calm-the-knee",
+    trackId: "walking-movement",
+    name: "Walking possible with support",
+    description: "Basic supported walking is possible without escalating symptoms.",
+    why: "Phase 1 needs safe movement, not independence.",
+    evidence: [seedMilestoneEvidence("Supported household walking is possible.")],
+    evidenceSummary: "Supported walking possible without symptom escalation",
+    criteria: ["Walking possible with support", "No concerning symptom response"],
+    unlockCriteria: ["Walking possible with support", "No concerning symptom response"],
+    nextStepIfConfirmed: "Keep walking short and support-assisted as needed.",
+    nextStepIfNotConfirmed: "Prioritize symptom control and reassess support needs.",
+    progressionType: "walking",
+    state: "unlocked",
+    status: "unlocked",
+  },
+  {
+    id: "m-sleep-not-severely-disrupted",
+    title: "Sleep not severely disrupted",
+    mission: "calm-the-knee",
+    missionId: "calm-the-knee",
+    trackId: "symptoms",
+    name: "Sleep not severely disrupted",
+    description: "Sleep is sufficient enough that recovery basics can continue.",
+    why: "Severely disrupted sleep is a recovery limiter.",
+    evidence: [seedMilestoneEvidence("Sleep is not currently blocking basic recovery work.")],
+    evidenceSummary: "Sleep not currently a severe recovery blocker",
+    criteria: ["Sleep not severely disrupted"],
+    unlockCriteria: ["Sleep not severely disrupted"],
+    nextStepIfConfirmed: "Keep protecting sleep while activation and ROM progress.",
+    nextStepIfNotConfirmed: "Make symptom control and sleep protection the primary focus.",
+    progressionType: "recovery",
+    state: "unlocked",
+    status: "unlocked",
+  },
+  {
+    id: "m-visible-quad-set",
+    title: "Visible quad set",
     mission: "wake-the-quad",
     missionId: "wake-the-quad",
     trackId: "activation",
-    name: "Quad activation 4/5",
-    description: "Voluntary quad activation reported 4/5 across a week.",
-    why: "Neuromuscular control is the gate to load tolerance.",
-    evidence: [seedMilestoneEvidence("Quad activation is being logged after daily work.")],
-    evidenceSummary: "Self-rated activation >= 4 on 5 of 7 days",
-    criteria: ["Quad activation >= 4/5 on 5 of 7 days", "No symptom increase from activation work"],
-    unlockCriteria: [
-      "Quad activation >= 4/5 on 5 of 7 days",
-      "No symptom increase from activation work",
-    ],
-    nextStepIfConfirmed: "Consider small skill-control exposure, not load progression.",
+    name: "Visible quad set",
+    description: "The quad visibly contracts on command.",
+    why: "A visible quad set is the first reliable activation signal.",
+    evidence: [seedMilestoneEvidence("User can visibly find the quad during quad sets.")],
+    evidenceSummary: "Visible quad contraction on command",
+    criteria: ["Visible quad contraction"],
+    unlockCriteria: ["Visible quad contraction"],
+    nextStepIfConfirmed: "Keep quad sets as quality work rather than chasing fatigue.",
+    nextStepIfNotConfirmed: "Return to simple quad-finding work.",
+    progressionType: "skill_control",
+    state: "unlocked",
+    status: "unlocked",
+  },
+  {
+    id: "m-repeatable-quad-activation",
+    title: "Repeatable quad activation",
+    mission: "wake-the-quad",
+    missionId: "wake-the-quad",
+    trackId: "activation",
+    name: "Repeatable quad activation",
+    description: "Quad contraction is repeatable without provoking symptoms.",
+    why: "Repeatability matters more than one good contraction.",
+    evidence: [seedMilestoneEvidence("Quad activation is repeatable during prescribed work.")],
+    evidenceSummary: "Repeatable quad activation without symptom spike",
+    criteria: ["Repeatable quad activation", "No symptom increase from activation work"],
+    unlockCriteria: ["Repeatable quad activation", "No symptom increase from activation work"],
+    nextStepIfConfirmed: "Small skill-control checks can be considered.",
     nextStepIfNotConfirmed: "Repeat quad sets and keep activation quality as the target.",
     progressionType: "skill_control",
-    state: "testable",
-    status: "testable",
+    state: "unlocked",
+    status: "unlocked",
+  },
+  {
+    id: "m-straight-leg-raise-testable",
+    title: "Straight leg raise testable",
+    mission: "wake-the-quad",
+    missionId: "wake-the-quad",
+    trackId: "activation",
+    name: "Straight leg raise testable",
+    description: "The athlete is ready to test a small straight-leg-raise dose.",
+    why: "A skill test is allowed only after symptoms, extension, and quad signal support it.",
+    evidence: [
+      seedMilestoneEvidence(
+        "SLR became testable after low symptoms, neutral extension, and repeatable quad signal.",
+      ),
+    ],
+    evidenceSummary: "SLR test dose criteria met",
+    criteria: ["Low symptoms", "Neutral extension", "Repeatable quad signal"],
+    unlockCriteria: ["Low symptoms", "Neutral extension", "Repeatable quad signal"],
+    nextStepIfConfirmed: "Use a controlled SLR test dose before adding it as work.",
+    nextStepIfNotConfirmed: "Keep SLR possible but not doseable.",
+    progressionType: "skill_control",
+    state: "unlocked",
+    status: "unlocked",
   },
   {
     id: "straight_leg_raise_no_lag",
@@ -1634,14 +1848,8 @@ const seedMilestones: Milestone[] = [
     name: "Straight Leg Raise - No Lag",
     description: "Lift the leg with the knee fully locked.",
     why: "Lag indicates incomplete extension control.",
-    evidence: [
-      seedMilestoneEvidence(
-        "Candidate skill-control milestone. Do not unlock until evening and next-morning response confirm tolerance.",
-        "manual",
-        "medium",
-      ),
-    ],
-    evidenceSummary: "Video or self-check SLR with no lag plus stable delayed response",
+    evidence: [seedMilestoneEvidence("User can perform 2x10 SLRs with no lag.", "manual", "high")],
+    evidenceSummary: "User can perform 2x10 SLRs with no lag",
     criteria: ["Straight leg raise without lag when clinically appropriate"],
     unlockCriteria: [
       "Evening pain remains <= 3/10",
@@ -1654,8 +1862,8 @@ const seedMilestones: Milestone[] = [
     nextStepIfConfirmed: "Tomorrow may add SLR 1x5 clean reps, no load.",
     nextStepIfNotConfirmed: "Keep SLR possible but not doseable. Return to quad sets only.",
     progressionType: "skill_control",
-    state: "testable",
-    status: "testable",
+    state: "unlocked",
+    status: "unlocked",
   },
   {
     id: "m-extension-0",
@@ -1667,16 +1875,16 @@ const seedMilestones: Milestone[] = [
     description: "Relaxed extension reaches neutral without forcing.",
     why: "Lost extension changes gait and loads other joints.",
     evidence: [
-      seedMilestoneEvidence("Relaxed extension status and response still need confirmation."),
+      seedMilestoneEvidence("User repeatedly reaches neutral extension.", "manual", "high"),
     ],
-    evidenceSummary: "Relaxed extension status plus next-morning response",
+    evidenceSummary: "User repeatedly reaches neutral extension",
     criteria: ["Extension reaches neutral", "No sharp end-range pain pattern"],
     unlockCriteria: ["Extension reaches neutral", "No sharp end-range pain pattern"],
-    nextStepIfConfirmed: "Keep gentle extension exposure in the plan at the tolerated dose.",
+    nextStepIfConfirmed: "Move extension from active build work to maintain/monitor.",
     nextStepIfNotConfirmed: "Use shorter relaxed exposures and avoid forced end range.",
     progressionType: "rom",
-    state: "locked",
-    status: "locked",
+    state: "unlocked",
+    status: "unlocked",
   },
   {
     id: "m-flexion-comfortable",
@@ -1687,15 +1895,43 @@ const seedMilestones: Milestone[] = [
     name: "Comfortable flexion improving",
     description: "Flexion improves or holds steady without next-day symptom increase.",
     why: "Flexion supports comfort, sitting, stairs, biking, and later training options.",
-    evidence: [seedMilestoneEvidence("Flexion comfort is being tracked with limiting factor.")],
-    evidenceSummary: "Flexion log plus next-morning swelling and pain response",
+    evidence: [
+      seedMilestoneEvidence(
+        "User can sit at 90 degrees and reach about 110 degrees without joint limitation.",
+        "manual",
+        "high",
+      ),
+    ],
+    evidenceSummary:
+      "User can sit at 90 degrees and reach about 110 degrees without joint limitation",
     criteria: ["Flexion improves or remains stable", "No next-day swelling increase"],
     unlockCriteria: ["Flexion improves or remains stable", "No next-day swelling increase"],
     nextStepIfConfirmed: "Repeat or gently progress comfortable flexion exposure.",
     nextStepIfNotConfirmed: "Keep flexion in a smaller comfortable range.",
     progressionType: "rom",
-    state: "testable",
-    status: "testable",
+    state: "unlocked_progressing",
+    status: "unlocked_progressing",
+  },
+  {
+    id: "m-rom-work-tolerated",
+    title: "ROM work tolerated without next-day response",
+    mission: "restore-extension",
+    missionId: "restore-extension",
+    trackId: "rom",
+    name: "ROM work tolerated without next-day response",
+    description: "Gentle ROM work does not create a next-day pain or swelling response.",
+    why: "Range work only progresses when the knee accepts it afterward.",
+    evidence: [
+      seedMilestoneEvidence("ROM work has been tolerated without a meaningful next-day response."),
+    ],
+    evidenceSummary: "ROM work tolerated without meaningful next-day response",
+    criteria: ["ROM work tolerated", "No next-day swelling or pain response"],
+    unlockCriteria: ["ROM work tolerated", "No next-day swelling or pain response"],
+    nextStepIfConfirmed: "Maintain extension and gently progress comfortable flexion.",
+    nextStepIfNotConfirmed: "Reduce ROM dose and repeat the prior tolerated range.",
+    progressionType: "rom",
+    state: "unlocked_progressing",
+    status: "unlocked_progressing",
   },
   {
     id: "m-walking-quality",
@@ -1703,13 +1939,18 @@ const seedMilestones: Milestone[] = [
     mission: "normalize-walking",
     missionId: "normalize-walking",
     trackId: "walking-movement",
-    name: "Clean supported walking",
-    description: "Walking quality improves without forcing support reduction.",
+    name: "Clean household walking",
+    description: "Household walking is clean and careful without chasing support reduction.",
     why: "Clean mechanics matter more than dropping crutches quickly.",
     evidence: [
-      seedMilestoneEvidence("Walking confidence and gait quality are tracked separately."),
+      seedMilestoneEvidence(
+        "User reports clean careful gait around the house; ignore bugged morning gait quality score.",
+        "manual",
+        "high",
+      ),
     ],
-    evidenceSummary: "Walking confidence trend plus gait quality and no next-day swelling response",
+    evidenceSummary:
+      "User reports clean careful gait around the house; ignore bugged morning gait quality score",
     criteria: [
       "Walking confidence improving",
       "No limp compensation",
@@ -1723,6 +1964,333 @@ const seedMilestones: Milestone[] = [
     nextStepIfConfirmed: "Keep support reduction optional and quality-gated.",
     nextStepIfNotConfirmed: "Do not reward no-crutch walking if gait quality worsens.",
     progressionType: "walking",
+    state: "unlocked",
+    status: "unlocked",
+  },
+  {
+    id: "m-walking-confidence-improving",
+    title: "Walking confidence improving",
+    mission: "normalize-walking",
+    missionId: "normalize-walking",
+    trackId: "walking-movement",
+    name: "Walking confidence improving",
+    description: "The athlete trusts walking more while staying careful.",
+    why: "Confidence and gait quality are related but separate progression signals.",
+    evidence: [seedMilestoneEvidence("Walking confidence is stable to improving.")],
+    evidenceSummary: "Walking confidence stable to improving",
+    criteria: ["Walking confidence stable or improving"],
+    unlockCriteria: ["Walking confidence stable or improving"],
+    nextStepIfConfirmed: "Keep gait quality as the gate for reducing support.",
+    nextStepIfNotConfirmed: "Keep walking short and supported.",
+    progressionType: "walking",
+    state: "unlocked_progressing",
+    status: "unlocked_progressing",
+  },
+  {
+    id: "m-support-reduced-clean-gait",
+    title: "Support reduced only when gait remains clean",
+    mission: "normalize-walking",
+    missionId: "normalize-walking",
+    trackId: "walking-movement",
+    name: "Support reduced only when gait remains clean",
+    description: "Support changes stay quality-gated.",
+    why: "Less support is not progress if gait quality gets worse.",
+    evidence: [seedMilestoneEvidence("Support reduction remains optional and quality-gated.")],
+    evidenceSummary: "Support reduction quality-gated",
+    criteria: ["No support reduction when gait quality worsens"],
+    unlockCriteria: ["No support reduction when gait quality worsens"],
+    nextStepIfConfirmed: "Continue reducing support only when gait stays clean.",
+    nextStepIfNotConfirmed: "Return to more support and clean up gait.",
+    progressionType: "walking",
+    state: "unlocked_progressing",
+    status: "unlocked_progressing",
+  },
+  {
+    id: "m-walking-volume-no-response",
+    title: "No next-day response from walking volume",
+    mission: "normalize-walking",
+    missionId: "normalize-walking",
+    trackId: "walking-movement",
+    name: "No next-day swelling/pain increase from walking volume",
+    description: "Walking volume does not create a next-day symptom response.",
+    why: "Walking volume progresses only when tomorrow stays quiet.",
+    evidence: [
+      seedMilestoneEvidence("Household walking is not producing a clear next-day response."),
+    ],
+    evidenceSummary: "Household walking not producing a clear next-day response",
+    criteria: ["No next-day swelling increase", "No next-day pain increase from walking volume"],
+    unlockCriteria: [
+      "No next-day swelling increase",
+      "No next-day pain increase from walking volume",
+    ],
+    nextStepIfConfirmed: "Keep walking exposure conservative and quality-based.",
+    nextStepIfNotConfirmed: "Reduce walking volume and reassess the next morning.",
+    progressionType: "walking",
+    state: "unlocked_progressing",
+    status: "unlocked_progressing",
+  },
+  {
+    id: "m-weight-shift-control",
+    title: "Weight-shift control",
+    mission: "controlled-weight-shift",
+    missionId: "controlled-weight-shift",
+    trackId: "walking-movement",
+    name: "Weight-shift control",
+    description: "A controlled weight-shift test dose is appropriate.",
+    why: "This is the next control gate before sit-to-stand or step work.",
+    evidence: [
+      seedMilestoneEvidence(
+        "Pain/swelling are low, extension is neutral, SLR is clean, flexion is improving, and household gait is clean.",
+        "manual",
+        "high",
+      ),
+    ],
+    evidenceSummary:
+      "Pain/swelling are low, extension is neutral, SLR is clean, flexion is improving, and household gait is clean",
+    criteria: ["Low symptoms", "Neutral extension", "Clean SLR", "Clean household gait"],
+    unlockCriteria: ["Controlled weight shift without buckling, guarding, or symptom response"],
+    nextStepIfConfirmed:
+      "Add controlled weight-shift work only if evening and next-morning response stay quiet.",
+    nextStepIfNotConfirmed:
+      "Keep weight shift as testable only and return to walking/activation basics.",
+    progressionType: "skill_control",
+    state: "testable",
+    status: "testable",
+  },
+  {
+    id: "m-quiet-symptoms-during-shift",
+    title: "Quiet symptoms during shift",
+    mission: "controlled-weight-shift",
+    missionId: "controlled-weight-shift",
+    trackId: "symptoms",
+    name: "Quiet symptoms during shift",
+    description: "Symptoms stay quiet during weight shift.",
+    why: "Control tests must not provoke the knee.",
+    evidence: [],
+    evidenceSummary: "Not yet tested",
+    criteria: ["No pain spike during weight shift"],
+    unlockCriteria: ["No pain spike during weight shift"],
+    nextStepIfConfirmed: "Confirm delayed response before progressing.",
+    nextStepIfNotConfirmed: "Stop weight-shift testing and return to easier movement.",
+    progressionType: "skill_control",
+    state: "locked",
+    status: "locked",
+  },
+  {
+    id: "m-no-buckling-guarding",
+    title: "No buckling or guarding",
+    mission: "controlled-weight-shift",
+    missionId: "controlled-weight-shift",
+    trackId: "walking-movement",
+    name: "No buckling or guarding",
+    description: "Weight shift occurs without buckling, guarding, or compensation.",
+    why: "Guarding means the skill is not yet doseable.",
+    evidence: [],
+    evidenceSummary: "Not yet tested",
+    criteria: ["No buckling", "No guarding", "No compensation"],
+    unlockCriteria: ["No buckling", "No guarding", "No compensation"],
+    nextStepIfConfirmed: "Confirm walking remains clean afterward.",
+    nextStepIfNotConfirmed: "Keep the test smaller or defer it.",
+    progressionType: "skill_control",
+    state: "locked",
+    status: "locked",
+  },
+  {
+    id: "m-walking-clean-after-shift",
+    title: "Walking remains clean afterward",
+    mission: "controlled-weight-shift",
+    missionId: "controlled-weight-shift",
+    trackId: "walking-movement",
+    name: "Walking remains clean afterward",
+    description: "Walking quality does not worsen after weight shift.",
+    why: "A test is not tolerated if it worsens gait.",
+    evidence: [],
+    evidenceSummary: "Not yet tested",
+    criteria: ["Walking remains clean after shift"],
+    unlockCriteria: ["Walking remains clean after shift"],
+    nextStepIfConfirmed: "Check next-day response before adding more.",
+    nextStepIfNotConfirmed: "Remove the provoking dose.",
+    progressionType: "walking",
+    state: "locked",
+    status: "locked",
+  },
+  {
+    id: "m-weight-shift-no-next-day-response",
+    title: "No next-day swelling/pain increase",
+    mission: "controlled-weight-shift",
+    missionId: "controlled-weight-shift",
+    trackId: "symptoms",
+    name: "No next-day swelling/pain increase",
+    description: "The next morning stays stable after weight-shift testing.",
+    why: "Tomorrow's response determines whether today was tolerated.",
+    evidence: [],
+    evidenceSummary: "Not yet tested",
+    criteria: ["No next-day swelling increase", "No next-day pain increase"],
+    unlockCriteria: ["No next-day swelling increase", "No next-day pain increase"],
+    nextStepIfConfirmed: "Weight shift can become a prescribed control task.",
+    nextStepIfNotConfirmed: "Repeat easier walking and activation work only.",
+    progressionType: "recovery",
+    state: "locked",
+    status: "locked",
+  },
+  {
+    id: "m-weight-shift-tolerated",
+    title: "Weight shift tolerated",
+    mission: "sit-to-stand-control",
+    missionId: "sit-to-stand-control",
+    trackId: "capacity",
+    name: "Weight shift tolerated",
+    description: "Weight shift has been confirmed without immediate or delayed response.",
+    why: "Sit-to-stand should wait until weight shift is tolerated.",
+    evidence: [],
+    evidenceSummary: "Awaiting weight-shift confirmation",
+    criteria: ["Weight shift tolerated"],
+    unlockCriteria: ["Weight shift tolerated"],
+    nextStepIfConfirmed: "A high-chair sit-to-stand test may become appropriate.",
+    nextStepIfNotConfirmed: "Do not add sit-to-stand work.",
+    progressionType: "skill_control",
+    state: "locked",
+    status: "locked",
+  },
+  {
+    id: "m-high-chair-sit-to-stand",
+    title: "Sit-to-stand from high chair controlled",
+    mission: "sit-to-stand-control",
+    missionId: "sit-to-stand-control",
+    trackId: "capacity",
+    name: "Sit-to-stand from high chair controlled",
+    description: "High-chair sit-to-stand is controlled without compensation.",
+    why: "This is an early capacity gate.",
+    evidence: [],
+    evidenceSummary: "Not yet tested",
+    criteria: ["Controlled high-chair sit-to-stand"],
+    unlockCriteria: ["Controlled high-chair sit-to-stand"],
+    nextStepIfConfirmed: "Confirm no collapse, hip shift, or delayed response.",
+    nextStepIfNotConfirmed: "Keep sit-to-stand locked.",
+    progressionType: "skill_control",
+    state: "locked",
+    status: "locked",
+  },
+  {
+    id: "m-no-knee-collapse-hip-shift",
+    title: "No knee collapse or hip shift",
+    mission: "sit-to-stand-control",
+    missionId: "sit-to-stand-control",
+    trackId: "capacity",
+    name: "No knee collapse or hip shift",
+    description: "Sit-to-stand pattern stays aligned.",
+    why: "Compensation is a failed pattern, not capacity progress.",
+    evidence: [],
+    evidenceSummary: "Not yet tested",
+    criteria: ["No knee collapse", "No hip shift"],
+    unlockCriteria: ["No knee collapse", "No hip shift"],
+    nextStepIfConfirmed: "Confirm symptoms stay quiet.",
+    nextStepIfNotConfirmed: "Reduce the task or keep it locked.",
+    progressionType: "skill_control",
+    state: "locked",
+    status: "locked",
+  },
+  {
+    id: "m-sit-to-stand-no-response",
+    title: "No symptom response",
+    mission: "sit-to-stand-control",
+    missionId: "sit-to-stand-control",
+    trackId: "symptoms",
+    name: "No symptom response",
+    description: "Sit-to-stand testing does not create immediate or next-day symptoms.",
+    why: "Capacity is proven by response.",
+    evidence: [],
+    evidenceSummary: "Not yet tested",
+    criteria: ["No immediate response", "No next-day response"],
+    unlockCriteria: ["No immediate response", "No next-day response"],
+    nextStepIfConfirmed: "Sit-to-stand can become doseable.",
+    nextStepIfNotConfirmed: "Return to weight-shift and walking control.",
+    progressionType: "recovery",
+    state: "locked",
+    status: "locked",
+  },
+  {
+    id: "m-assisted-stair-ascent",
+    title: "Assisted stair ascent observation passed",
+    mission: "step-and-stair-control",
+    missionId: "step-and-stair-control",
+    trackId: "capacity",
+    name: "Assisted stair ascent observation passed",
+    description:
+      "The athlete observed a stair ascent using surgical leg with both hands assisting.",
+    why: "This is useful evidence, but it does not unlock stair training by itself.",
+    evidence: [
+      seedMilestoneEvidence(
+        "User climbed stairs with surgical leg using both hands assisting. Do not unlock stair training yet.",
+        "manual",
+        "medium",
+      ),
+    ],
+    evidenceSummary:
+      "User climbed stairs with surgical leg using both hands assisting; stair training remains locked",
+    criteria: ["Assisted stair ascent observed"],
+    unlockCriteria: ["Observation only; controlled low step-up still required"],
+    nextStepIfConfirmed:
+      "Do not unlock stair training yet. Wait for controlled low step-up criteria.",
+    nextStepIfNotConfirmed: "Keep stairs observational and assisted only.",
+    progressionType: "skill_control",
+    state: "observation_passed",
+    status: "observation_passed",
+  },
+  {
+    id: "m-controlled-low-step-up",
+    title: "Controlled low step-up",
+    mission: "step-and-stair-control",
+    missionId: "step-and-stair-control",
+    trackId: "capacity",
+    name: "Controlled low step-up",
+    description: "A low step-up is controlled without compensation.",
+    why: "Step-up control must precede stair training.",
+    evidence: [],
+    evidenceSummary: "Not yet tested",
+    criteria: ["Controlled low step-up"],
+    unlockCriteria: ["Controlled low step-up"],
+    nextStepIfConfirmed: "Confirm stair ascent with support and no compensation.",
+    nextStepIfNotConfirmed: "Do not add stair training.",
+    progressionType: "skill_control",
+    state: "locked",
+    status: "locked",
+  },
+  {
+    id: "m-stair-ascent-supported-no-compensation",
+    title: "Stair ascent with support and no compensation",
+    mission: "step-and-stair-control",
+    missionId: "step-and-stair-control",
+    trackId: "capacity",
+    name: "Stair ascent with support and no compensation",
+    description: "Supported stair ascent remains controlled.",
+    why: "Support is acceptable; compensation is the limiter.",
+    evidence: [],
+    evidenceSummary: "Not yet tested",
+    criteria: ["Supported stair ascent", "No compensation"],
+    unlockCriteria: ["Supported stair ascent", "No compensation"],
+    nextStepIfConfirmed: "Confirm no next-day response.",
+    nextStepIfNotConfirmed: "Keep stair training locked.",
+    progressionType: "skill_control",
+    state: "locked",
+    status: "locked",
+  },
+  {
+    id: "m-stair-no-next-day-response",
+    title: "No next-day response",
+    mission: "step-and-stair-control",
+    missionId: "step-and-stair-control",
+    trackId: "symptoms",
+    name: "No next-day response",
+    description: "Stair exposure does not create a next-day symptom response.",
+    why: "Stair training is only earned when tomorrow stays quiet.",
+    evidence: [],
+    evidenceSummary: "Not yet tested",
+    criteria: ["No next-day swelling increase", "No next-day pain increase"],
+    unlockCriteria: ["No next-day swelling increase", "No next-day pain increase"],
+    nextStepIfConfirmed: "Stair training can become doseable.",
+    nextStepIfNotConfirmed: "Return to lower-level control work.",
+    progressionType: "recovery",
     state: "locked",
     status: "locked",
   },
@@ -1747,6 +2315,120 @@ const seedMilestones: Milestone[] = [
   },
 ];
 
+const currentMilestoneOverrides: Record<
+  string,
+  {
+    state: MilestoneState;
+    evidenceSummary: string;
+    evidence: MilestoneEvidence[];
+    nextStepIfConfirmed?: string;
+    nextStepIfNotConfirmed?: string;
+  }
+> = {
+  "m-extension-0": {
+    state: "unlocked",
+    evidenceSummary: "User repeatedly reaches neutral extension",
+    evidence: [
+      seedMilestoneEvidence("User repeatedly reaches neutral extension.", "manual", "high"),
+    ],
+    nextStepIfConfirmed: "Move extension from active build work to maintain/monitor.",
+  },
+  straight_leg_raise_no_lag: {
+    state: "unlocked",
+    evidenceSummary: "User can perform 2x10 SLRs with no lag",
+    evidence: [seedMilestoneEvidence("User can perform 2x10 SLRs with no lag.", "manual", "high")],
+  },
+  "m-flexion-comfortable": {
+    state: "unlocked_progressing",
+    evidenceSummary:
+      "User can sit at 90 degrees and reach about 110 degrees without joint limitation",
+    evidence: [
+      seedMilestoneEvidence(
+        "User can sit at 90 degrees and reach about 110 degrees without joint limitation.",
+        "manual",
+        "high",
+      ),
+    ],
+  },
+  "m-walking-quality": {
+    state: "unlocked",
+    evidenceSummary:
+      "User reports clean careful gait around the house; ignore bugged morning gait quality score",
+    evidence: [
+      seedMilestoneEvidence(
+        "User reports clean careful gait around the house; ignore bugged morning gait quality score.",
+        "manual",
+        "high",
+      ),
+    ],
+  },
+  "m-weight-shift-control": {
+    state: "testable",
+    evidenceSummary:
+      "Pain/swelling are low, extension is neutral, SLR is clean, flexion is improving, and household gait is clean",
+    evidence: [
+      seedMilestoneEvidence(
+        "Pain/swelling are low, extension is neutral, SLR is clean, flexion is improving, and household gait is clean.",
+        "manual",
+        "high",
+      ),
+    ],
+  },
+  "m-assisted-stair-ascent": {
+    state: "observation_passed",
+    evidenceSummary:
+      "User climbed stairs with surgical leg using both hands assisting; stair training remains locked",
+    evidence: [
+      seedMilestoneEvidence(
+        "User climbed stairs with surgical leg using both hands assisting. Do not unlock stair training yet.",
+        "manual",
+        "medium",
+      ),
+    ],
+    nextStepIfConfirmed:
+      "Do not unlock stair training yet. Wait for controlled low step-up criteria.",
+  },
+};
+
+const currentMilestoneOverrideRank: Record<MilestoneState, number> = {
+  locked: 0,
+  testable: 40,
+  observation_passed: 50,
+  test_passed_pending_confirmation: 75,
+  unlocked_progressing: 90,
+  unlocked: 100,
+  paused: 100,
+};
+
+function applyCurrentMilestoneOverride(milestone: Milestone): Milestone {
+  const override = currentMilestoneOverrides[milestone.id];
+  if (!override) return milestone;
+  if (milestone.state === "paused") return milestone;
+  if (
+    currentMilestoneOverrideRank[milestone.state] > currentMilestoneOverrideRank[override.state]
+  ) {
+    return milestone;
+  }
+  const existingEvidence = new Set(milestone.evidence.map((item) => item.summary));
+  const evidence = [
+    ...milestone.evidence,
+    ...override.evidence.filter((item) => !existingEvidence.has(item.summary)),
+  ];
+  return {
+    ...milestone,
+    state: override.state,
+    status: override.state,
+    evidence,
+    evidenceSummary: override.evidenceSummary,
+    nextStepIfConfirmed: override.nextStepIfConfirmed ?? milestone.nextStepIfConfirmed,
+    nextStepIfNotConfirmed: override.nextStepIfNotConfirmed ?? milestone.nextStepIfNotConfirmed,
+    unlockedAt:
+      override.state === "unlocked"
+        ? (milestone.unlockedAt ?? override.evidence[0]?.date)
+        : milestone.unlockedAt,
+  };
+}
+
 // Seed prior morning check-ins so trends and historical viewing work.
 function isoDaysAgo(n: number): string {
   const d = new Date();
@@ -1769,7 +2451,7 @@ export function createDefaultMorningCheckIn(
     swellingTrend: "stable",
     swellingContext: "surgical_baseline",
     walkingConfidence: 3,
-    gaitQuality: 3,
+    gaitQuality: "not_assessed",
     extensionStatus: "slightly_limited",
     flexionStatus: "comfortable_gentle_bend",
     flexionLimitingFactor: "unknown",
@@ -1821,7 +2503,7 @@ const seedMorningHistory: MorningCheckIn[] = [
     swellingTrend: "unknown",
     swellingContext: "unknown",
     walkingConfidence: 2,
-    gaitQuality: 2,
+    gaitQuality: "not_assessed",
     extensionStatus: "moderately_limited",
     flexionStatus: "stiff_but_tolerable",
     flexionLimitingFactor: "swelling_limited",
@@ -1840,7 +2522,7 @@ const seedMorningHistory: MorningCheckIn[] = [
     swellingTrend: "improved",
     swellingContext: "surgical_baseline",
     walkingConfidence: 3,
-    gaitQuality: 3,
+    gaitQuality: "not_assessed",
     extensionStatus: "slightly_limited",
     flexionStatus: "comfortable_gentle_bend",
     flexionLimitingFactor: "unknown",
@@ -1859,7 +2541,7 @@ const seedMorningHistory: MorningCheckIn[] = [
     swellingTrend: "stable",
     swellingContext: "surgical_baseline",
     walkingConfidence: 3,
-    gaitQuality: 3,
+    gaitQuality: "not_assessed",
     extensionStatus: "slightly_limited",
     flexionStatus: "comfortable_gentle_bend",
     flexionLimitingFactor: "unknown",
@@ -1905,7 +2587,7 @@ const seedTodayMorning: MorningCheckIn = {
   swellingTrend: "stable",
   swellingContext: "surgical_baseline",
   walkingConfidence: 4,
-  gaitQuality: 3,
+  gaitQuality: "not_assessed",
   extensionStatus: "slightly_limited",
   flexionStatus: "comfortable_gentle_bend",
   flexionLimitingFactor: "unknown",
@@ -1925,7 +2607,7 @@ const initial: PhoenixState = {
     startedAt: "2026-06-25",
     surgeryDate: "2026-06-25",
     activePhaseId: "activation-early-rom",
-    activeMissionIds: ["wake-the-quad", "restore-extension", "normalize-walking"],
+    activeMissionIds: ["controlled-weight-shift"],
   },
   phases: PHASE_CONFIGS,
   recoveryTracks: RECOVERY_TRACKS,
@@ -1933,7 +2615,7 @@ const initial: PhoenixState = {
   athleteName: "Kevin",
   surgeryDate: "2026-06-25",
   campaignName: "ACL Revision Prehab",
-  currentMissionId: "wake-the-quad",
+  currentMissionId: "controlled-weight-shift",
   recoveryIqXp: 0,
   morning: seedTodayMorning,
   evening: null,
@@ -2146,6 +2828,7 @@ function normalizeSmallWin(value: unknown): SmallWin | null {
 
 type LegacyMorningCheckIn = Partial<MorningCheckIn> & {
   quadActivation?: number;
+  gaitQuality?: GaitQuality | number;
   extension?: number;
   extensionStatus?: ExtensionStatus | "neutral";
   extensionEstimateDegrees?: number;
@@ -2222,7 +2905,34 @@ function normalizeFlexionLimitingFactor(value: unknown): FlexionLimitingFactor {
 
 function normalizeMilestoneId(value: unknown): string {
   const id = stringValue(value);
+  const key = id
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const aliases: Record<string, string> = {
+    m_slr_no_lag: "straight_leg_raise_no_lag",
+    straight_leg_raise_no_lag: "straight_leg_raise_no_lag",
+    straight_leg_raise_no_lag_observation: "straight_leg_raise_no_lag",
+    straight_leg_raise_no_lag_test: "straight_leg_raise_no_lag",
+    straight_leg_raise_no_lag_milestone: "straight_leg_raise_no_lag",
+    straight_leg_raise_without_lag: "straight_leg_raise_no_lag",
+    straight_leg_raise_no_lag_: "straight_leg_raise_no_lag",
+    m_quad_activation_4: "m-repeatable-quad-activation",
+    quad_activation_4_5: "m-repeatable-quad-activation",
+    repeatable_quad_activation: "m-repeatable-quad-activation",
+    visible_quad_set: "m-visible-quad-set",
+    straight_leg_raise_testable: "m-straight-leg-raise-testable",
+    passive_extension_to_neutral: "m-extension-0",
+    extension_to_neutral: "m-extension-0",
+    comfortable_flexion_improving: "m-flexion-comfortable",
+    clean_supported_walking: "m-walking-quality",
+    clean_household_walking: "m-walking-quality",
+    weight_shift_control: "m-weight-shift-control",
+    assisted_stair_ascent: "m-assisted-stair-ascent",
+    assisted_stair_ascent_observation_passed: "m-assisted-stair-ascent",
+  };
   if (id === "m-slr-no-lag") return "straight_leg_raise_no_lag";
+  if (aliases[key]) return aliases[key];
   return id;
 }
 
@@ -2230,7 +2940,9 @@ function normalizeMilestoneState(value: unknown): MilestoneState {
   if (value === "in-progress") return "testable";
   return value === "locked" ||
     value === "testable" ||
+    value === "observation_passed" ||
     value === "test_passed_pending_confirmation" ||
+    value === "unlocked_progressing" ||
     value === "unlocked" ||
     value === "paused"
     ? value
@@ -2298,6 +3010,40 @@ function normalizeMilestoneEvidence(
   return summary ? [{ date: fallbackDate, type: "manual", summary, confidence: "medium" }] : [];
 }
 
+function normalizeMission(value: unknown, seed: Mission): Mission {
+  if (!value || typeof value !== "object") return seed;
+  const raw = value as Partial<Mission>;
+  return {
+    ...seed,
+    ...raw,
+    id: seed.id,
+    title: raw.title ?? raw.name ?? seed.title,
+    name: raw.name ?? raw.title ?? seed.name,
+    phaseId: seed.phaseId,
+    trackIds: seed.trackIds,
+    phase: seed.phase,
+    criteria: seed.criteria,
+    milestoneIds: seed.milestoneIds,
+    possibleQuestIds: seed.possibleQuestIds,
+    nextUnlock: seed.nextUnlock,
+    progress: seed.progress,
+    status: seed.status,
+    maintenanceWhenComplete: seed.maintenanceWhenComplete,
+  };
+}
+
+function normalizeMissions(value: unknown): Mission[] {
+  const savedById = new Map<string, unknown>();
+  if (Array.isArray(value)) {
+    value.forEach((item) => {
+      if (!item || typeof item !== "object") return;
+      const id = stringValue((item as Record<string, unknown>).id);
+      if (id) savedById.set(id, item);
+    });
+  }
+  return MISSIONS.map((mission) => normalizeMission(savedById.get(mission.id), mission));
+}
+
 function normalizeMilestone(
   value: unknown,
   activeMissionId: MissionId,
@@ -2310,7 +3056,11 @@ function normalizeMilestone(
     state?: MilestoneState | "in-progress";
     status?: MilestoneState | "in-progress";
   };
-  const id = normalizeMilestoneId(raw.id);
+  const idFromId = normalizeMilestoneId(raw.id);
+  const idFromName = normalizeMilestoneId(raw.title) || normalizeMilestoneId(raw.name);
+  const seedIds = new Set(seedMilestones.map((item) => item.id));
+  const id = idFromId && seedIds.has(idFromId) ? idFromId : idFromName || idFromId;
+  if (!id) return null;
   const seed = seedMilestones.find((item) => item.id === id);
   const missionId = (raw.missionId ??
     raw.mission ??
@@ -2328,7 +3078,7 @@ function normalizeMilestone(
     (typeof raw.evidence === "string" ? raw.evidence : "") ??
     name;
   const state = normalizeMilestoneState(raw.state ?? raw.status ?? seed?.state);
-  return {
+  const milestone = {
     ...(seed ?? {}),
     ...raw,
     id,
@@ -2361,6 +3111,7 @@ function normalizeMilestone(
     coachNotes: raw.coachNotes,
     allowsImmediateUnlock: raw.allowsImmediateUnlock ?? seed?.allowsImmediateUnlock,
   } satisfies Milestone;
+  return applyCurrentMilestoneOverride(milestone);
 }
 
 function normalizeMorningCheckIn(
@@ -2383,10 +3134,7 @@ function normalizeMorningCheckIn(
     swellingTrend: entry.swellingTrend ?? fallback.swellingTrend,
     swellingContext: entry.swellingContext ?? fallback.swellingContext,
     walkingConfidence: finiteNumber(entry.walkingConfidence, fallback.walkingConfidence),
-    gaitQuality:
-      entry.gaitQuality == null
-        ? fallback.gaitQuality
-        : finiteNumber(entry.gaitQuality, fallback.gaitQuality ?? 3),
+    gaitQuality: normalizeGaitQuality(entry.gaitQuality),
     extensionStatus: normalizeExtensionStatus(
       entry.extensionStatus,
       entry.extensionEstimateDegrees ?? entry.extension,
@@ -2465,8 +3213,10 @@ function normalizeEveningCheckIn(
 }
 
 function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
-  const activeMissionId = saved.currentMissionId ?? initial.currentMissionId;
-  const missions = saved.missions?.length ? saved.missions : MISSIONS;
+  const missions = normalizeMissions(saved.missions);
+  const activeMissionId = missions.some((mission) => mission.id === saved.currentMissionId)
+    ? (saved.currentMissionId as MissionId)
+    : initial.currentMissionId;
   const activeMission = missions.find((mission) => mission.id === activeMissionId) ?? MISSIONS[1];
   const campaign: Campaign = {
     ...initial.campaign,
@@ -2490,6 +3240,21 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
   const milestones: Milestone[] = [...milestoneSeedsById.values()]
     .map((milestone) => normalizeMilestone(milestone, activeMissionId, missions))
     .filter((milestone): milestone is Milestone => Boolean(milestone));
+  const resolvedCurrentMissionId = currentMission({
+    ...initial,
+    ...saved,
+    campaign,
+    missions,
+    milestones,
+    currentMissionId: activeMissionId,
+  }).id;
+  const resolvedActiveMission =
+    missions.find((mission) => mission.id === resolvedCurrentMissionId) ?? activeMission;
+  const resolvedCampaign: Campaign = {
+    ...campaign,
+    activePhaseId: resolvedActiveMission.phaseId,
+    activeMissionIds: [resolvedCurrentMissionId],
+  };
 
   const savedMorning = normalizeMorningCheckIn(saved.morning as LegacyMorningCheckIn | undefined);
   const savedEvening = normalizeEveningCheckIn(saved.evening ?? undefined);
@@ -2497,7 +3262,10 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
     saved.checkIns?.map((entry) => ({
       ...entry,
       phaseId:
-        entry.phaseId ?? entry.morning?.phaseId ?? entry.evening?.phaseId ?? activeMission.phaseId,
+        entry.phaseId ??
+        entry.morning?.phaseId ??
+        entry.evening?.phaseId ??
+        resolvedActiveMission.phaseId,
       morning: normalizeMorningCheckIn(entry.morning as LegacyMorningCheckIn | undefined),
       evening: normalizeEveningCheckIn(entry.evening),
     })) ?? [];
@@ -2659,14 +3427,14 @@ function migratePhoenixState(saved: Partial<PhoenixState>): PhoenixState {
   return {
     ...initial,
     ...saved,
-    campaign,
+    campaign: resolvedCampaign,
     phases: normalizePhaseConfigs(saved.phases),
     recoveryTracks: saved.recoveryTracks?.length ? saved.recoveryTracks : RECOVERY_TRACKS,
     missions,
-    currentMissionId: activeMissionId,
-    athleteName: campaign.athleteName,
-    surgeryDate: campaign.surgeryDate,
-    campaignName: campaign.name,
+    currentMissionId: resolvedCurrentMissionId,
+    athleteName: resolvedCampaign.athleteName,
+    surgeryDate: resolvedCampaign.surgeryDate,
+    campaignName: resolvedCampaign.name,
     recoveryIqXp: 0,
     morning: savedMorning ?? initial.morning,
     evening: savedEvening ?? initial.evening,
@@ -2825,18 +3593,89 @@ export function currentCampaign(s: PhoenixState): Campaign {
   return s.campaign;
 }
 
+const MILESTONE_STATE_SCORES: Record<MilestoneState, number> = {
+  locked: 0,
+  testable: 40,
+  observation_passed: 50,
+  test_passed_pending_confirmation: 75,
+  unlocked_progressing: 90,
+  unlocked: 100,
+  paused: 0,
+};
+
+function isMissionCompleteMilestone(state: MilestoneState): boolean {
+  return state === "unlocked" || state === "unlocked_progressing";
+}
+
+function isMissionActiveMilestone(state: MilestoneState): boolean {
+  return state === "testable" || state === "test_passed_pending_confirmation";
+}
+
+function missionLinkedMilestones(s: PhoenixState, mission: Mission): Milestone[] {
+  const byId = new Map(s.milestones.map((milestone) => [milestone.id, milestone]));
+  return mission.milestoneIds
+    .map((id) => byId.get(normalizeMilestoneId(id)))
+    .filter((milestone): milestone is Milestone => Boolean(milestone));
+}
+
+function missionProgressFromMilestones(milestones: Milestone[]): number {
+  const scored = milestones.filter((milestone) => milestone.state !== "paused");
+  if (scored.length === 0) return 0;
+  const total = scored.reduce((sum, milestone) => sum + MILESTONE_STATE_SCORES[milestone.state], 0);
+  return Math.round(total / scored.length);
+}
+
+function missionStatusFromMilestones(mission: Mission, milestones: Milestone[]): MissionStatus {
+  if (milestones.length === 0) return "locked";
+  if (milestones.some((milestone) => milestone.state === "paused")) return "blocked";
+  const allComplete = milestones.every((milestone) => isMissionCompleteMilestone(milestone.state));
+  if (allComplete) return mission.maintenanceWhenComplete ? "maintenance" : "complete";
+  if (milestones.some((milestone) => isMissionActiveMilestone(milestone.state))) return "active";
+  return "locked";
+}
+
+function nextUnlockFromMilestones(mission: Mission, milestones: Milestone[]): string {
+  const next =
+    milestones.find((milestone) => milestone.state === "testable") ??
+    milestones.find((milestone) => milestone.state === "test_passed_pending_confirmation") ??
+    milestones.find((milestone) => milestone.state === "observation_passed") ??
+    milestones.find((milestone) => milestone.state === "locked" || milestone.state === "paused");
+  return next?.title ?? next?.name ?? mission.nextUnlock;
+}
+
+export function deriveMissionFromMilestones(s: PhoenixState, mission: Mission): Mission {
+  const milestones = missionLinkedMilestones(s, mission);
+  const status = missionStatusFromMilestones(mission, milestones);
+  return {
+    ...mission,
+    title: mission.title ?? mission.name,
+    progress: missionProgressFromMilestones(milestones),
+    status,
+    nextUnlock: nextUnlockFromMilestones(mission, milestones),
+  };
+}
+
+export function derivedMissions(s: PhoenixState): Mission[] {
+  const missions = s.missions?.length ? s.missions : MISSIONS;
+  return missions.map((mission) => deriveMissionFromMilestones(s, mission));
+}
+
 export function currentMission(s: PhoenixState): Mission {
-  return (s.missions ?? MISSIONS).find((m) => m.id === s.currentMissionId) ?? MISSIONS[1];
+  const missions = derivedMissions(s);
+  const selected = missions.find((mission) => mission.id === s.currentMissionId);
+  if (selected?.status === "active") return selected;
+  return (
+    missions.find((mission) => mission.status === "active") ??
+    selected ??
+    missions.find((mission) => mission.status === "maintenance") ??
+    missions[0]
+  );
 }
 
 export function activeMissions(s: PhoenixState): Mission[] {
-  const missionIds = s.campaign.activeMissionIds?.length
-    ? s.campaign.activeMissionIds
-    : [s.currentMissionId];
-  const missions = s.missions ?? MISSIONS;
-  return missionIds
-    .map((id) => missions.find((mission) => mission.id === id))
-    .filter((mission): mission is Mission => Boolean(mission));
+  const missions = derivedMissions(s);
+  const active = missions.filter((mission) => mission.status === "active");
+  return active.length ? active : [currentMission(s)];
 }
 
 export function currentPhase(s: PhoenixState): Phase {
@@ -5374,17 +6213,17 @@ function skillTestCriteriaMetForSlr(
 ): boolean {
   if (!morning) return false;
   const swellingTrend = morning.swellingTrend ?? "unknown";
+  const morningGaitQualityScore = gaitQualityScore(morning.gaitQuality);
   const gaitQuality =
-    morning.gaitQuality ??
+    morningGaitQualityScore ??
     previousResponse?.gaitQualityAfter ??
-    previousResponse?.movementQualityAfter ??
-    3;
+    previousResponse?.movementQualityAfter;
   return (
     morning.pain <= 3 &&
     (morning.swellingLevel ?? morning.swelling) <= 6 &&
     swellingTrend !== "worse" &&
     morning.walkingConfidence >= 3 &&
-    gaitQuality >= 3 &&
+    (gaitQuality == null || gaitQuality >= 3) &&
     morning.extensionStatus === "reaches_neutral" &&
     (previousResponse?.quadActivationQuality ?? 3) >= 3 &&
     !hasConcerningNotes(morning.notes)
@@ -5578,6 +6417,8 @@ export interface MilestoneWatchItem {
 
 function milestoneStatusLabel(state: MilestoneState): string {
   if (state === "test_passed_pending_confirmation") return "Test passed - pending confirmation";
+  if (state === "observation_passed") return "Observation passed";
+  if (state === "unlocked_progressing") return "Unlocked - progressing";
   if (state === "testable") return "Testable";
   if (state === "paused") return "Paused";
   if (state === "unlocked") return "Unlocked";
@@ -5594,14 +6435,18 @@ export function milestoneWatchForDate(
     (activePlan?.nextUnlocks ?? []).map((unlock) => [unlock.milestoneId, unlock]),
   );
   return s.milestones
-    .filter((milestone) => milestone.state !== "unlocked")
+    .filter(
+      (milestone) => milestone.state !== "unlocked" && milestone.state !== "unlocked_progressing",
+    )
     .sort((a, b) => {
       const order: Record<MilestoneState, number> = {
-        test_passed_pending_confirmation: 0,
-        testable: 1,
-        paused: 2,
-        locked: 3,
-        unlocked: 4,
+        testable: 0,
+        test_passed_pending_confirmation: 1,
+        observation_passed: 2,
+        paused: 3,
+        locked: 4,
+        unlocked_progressing: 5,
+        unlocked: 6,
       };
       return order[a.state] - order[b.state];
     })
@@ -5863,9 +6708,10 @@ function swellingPairedWithNegativeSignals(
   const walkingConfidenceDrop = previousMorningEntry
     ? previousMorningEntry.walkingConfidence - current.walkingConfidence
     : 0;
+  const currentGaitQualityScore = gaitQualityScore(current.gaitQuality);
   const movementQualityLow =
     (current.movementQuality != null && current.movementQuality <= 2) ||
-    (current.gaitQuality != null && current.gaitQuality <= 2) ||
+    (currentGaitQualityScore != null && currentGaitQualityScore <= 2) ||
     (previousEveningEntry?.gaitQualityAfter != null &&
       previousEveningEntry.gaitQualityAfter <= 2) ||
     (previousEveningEntry?.movementQualityAfter != null &&
@@ -5893,15 +6739,15 @@ function hasPositiveSkillControlSignal(
   swellingTrend: SwellingTrend,
   previousEveningEntry: EveningCheckIn | null,
 ): boolean {
+  const currentGaitQualityScore = gaitQualityScore(current.gaitQuality);
   const gaitQuality =
-    current.gaitQuality ??
+    currentGaitQualityScore ??
     previousEveningEntry?.gaitQualityAfter ??
-    previousEveningEntry?.movementQualityAfter ??
-    3;
+    previousEveningEntry?.movementQualityAfter;
   return (
     current.pain <= 3 &&
     current.walkingConfidence >= 3 &&
-    gaitQuality >= 3 &&
+    (gaitQuality == null || gaitQuality >= 3) &&
     swellingTrend !== "worse" &&
     current.extensionStatus === "reaches_neutral" &&
     (previousEveningEntry?.quadActivationQuality ?? 3) >= 3 &&
@@ -6089,10 +6935,13 @@ export function currentPhaseN(s: PhoenixState): number {
 }
 
 export function missionMilestoneProgress(s: PhoenixState, missionId: MissionId) {
-  const list = s.milestones.filter((m) => m.mission === missionId);
+  const mission = derivedMissions(s).find((item) => item.id === missionId);
+  const list = mission
+    ? missionLinkedMilestones(s, mission)
+    : s.milestones.filter((milestone) => milestone.mission === missionId);
   const total = Math.max(list.length, 1);
-  const done = list.filter((m) => m.state === "unlocked").length;
-  return { done, total, pct: Math.round((done / total) * 100) };
+  const done = list.filter((milestone) => isMissionCompleteMilestone(milestone.state)).length;
+  return { done, total, pct: missionProgressFromMilestones(list) };
 }
 
 export function todaysWin(
