@@ -219,7 +219,6 @@ export function buildPacketMarkdown(
   if (previousResponse) {
     lines.push(`## Previous Evening Response`);
     lines.push(`- Date: ${previousResponse.date}`);
-    lines.push(`- Quests completed: ${previousResponse.exercisesCompleted || "—"}`);
     lines.push(
       `- Pain during: ${previousResponse.painDuring}/10 · Pain after: ${previousResponse.painAfter}/10`,
     );
@@ -233,8 +232,7 @@ export function buildPacketMarkdown(
     lines.push(`- Quad activation quality: ${previousResponse.quadActivationQuality}/5`);
     lines.push(`- Extension response: ${formatPacketValue(previousResponse.extensionResponse)}`);
     lines.push(`- Flexion response: ${formatPacketValue(previousResponse.flexionResponse)}`);
-    lines.push(`- Concerning symptoms: ${previousResponse.concerningSymptoms || "—"}`);
-    lines.push(`- Notes: ${previousResponse.notes || "—"}`);
+    lines.push(`- Notes / concerns: ${formatEveningNotes(previousResponse)}`);
     lines.push("");
   }
 
@@ -256,7 +254,6 @@ export function buildPacketMarkdown(
 
   if (kind === "evening" && e) {
     lines.push(`## Evening Response Check-In`);
-    lines.push(`- Quests completed: ${e.exercisesCompleted || "—"}`);
     lines.push(`- Pain during: ${e.painDuring}/10 · Pain after: ${e.painAfter}/10`);
     lines.push(`- Swelling change: ${e.swellingChange > 0 ? "+" : ""}${e.swellingChange}`);
     lines.push(`- Walking confidence after: ${e.walkingConfidenceAfter ?? e.walkingConfidence}/5`);
@@ -264,9 +261,7 @@ export function buildPacketMarkdown(
     lines.push(`- Quad activation quality: ${e.quadActivationQuality}/5`);
     lines.push(`- Extension response: ${formatPacketValue(e.extensionResponse)}`);
     lines.push(`- Flexion response: ${formatPacketValue(e.flexionResponse)}`);
-    lines.push(`- Concerning symptoms: ${e.concerningSymptoms || "—"}`);
-    lines.push(`- Milestones touched: ${e.milestones || "—"}`);
-    lines.push(`- Notes: ${e.notes || "—"}`);
+    lines.push(`- Notes / concerns: ${formatEveningNotes(e)}`);
     lines.push("");
   }
 
@@ -478,6 +473,21 @@ function formatSkillTest(test: SkillTest): string {
     result.notes ? `notes: ${result.notes}` : "",
   ].filter(Boolean);
   return [`status ${test.status}`, ...response].join("; ");
+}
+
+function formatEveningNotes(e: {
+  exercisesCompleted?: string;
+  concerningSymptoms?: string;
+  milestones?: string;
+  notes?: string;
+}): string {
+  const parts = [
+    e.notes,
+    e.concerningSymptoms ? `Concerns: ${e.concerningSymptoms}` : "",
+    e.milestones ? `Milestone observations: ${e.milestones}` : "",
+    e.exercisesCompleted ? `Legacy quest note: ${e.exercisesCompleted}` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" | ") : "—";
 }
 
 function formatPacketValue(value: string | undefined) {

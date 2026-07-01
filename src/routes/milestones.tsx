@@ -28,7 +28,7 @@ function MilestonesPage() {
   const unlock = (id: string) =>
     setState((prev) => {
       const milestone = prev.milestones.find((mi) => mi.id === id);
-      if (!milestone || milestone.state === "unlocked") return prev;
+      if (!milestone || isAchievedMilestoneState(milestone.state)) return prev;
 
       const now = new Date();
       const timestamp = getUtcTimestamp(now);
@@ -89,20 +89,19 @@ function MilestonesPage() {
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 {items.map((mi) => {
-                  const Icon =
-                    mi.state === "unlocked" || mi.state === "unlocked_progressing"
-                      ? CheckCircle2
-                      : mi.state === "locked" || mi.state === "paused"
-                        ? Lock
-                        : Trophy;
+                  const achieved = isAchievedMilestoneState(mi.state);
+                  const Icon = achieved
+                    ? CheckCircle2
+                    : mi.state === "locked" || mi.state === "paused"
+                      ? Lock
+                      : Trophy;
                   return (
                     <Surface key={mi.id} className="p-5">
                       <div className="flex items-start gap-3">
                         <div
                           className={cn(
                             "grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border",
-                            (mi.state === "unlocked" || mi.state === "unlocked_progressing") &&
-                              "bg-success/15 text-success",
+                            achieved && "bg-success/15 text-success",
                             (mi.state === "testable" ||
                               mi.state === "test_passed_pending_confirmation" ||
                               mi.state === "observation_passed") &&
@@ -150,8 +149,13 @@ function MilestonesPage() {
                           )}
                           <p className="mt-2 text-xs">
                             <span className="text-muted-foreground">State · </span>
-                            {formatState(mi.state)}
+                            {formatMilestoneState(mi.state)}
                           </p>
+                          {mi.state === "unlocked_progressing" && (
+                            <p className="mt-1 text-xs text-success">
+                              Achieved. Still monitored for quality and symptom response.
+                            </p>
+                          )}
                           <p className="mt-1 text-xs">
                             <span className="text-muted-foreground">Next step if confirmed · </span>
                             {mi.nextStepIfConfirmed}
@@ -162,7 +166,7 @@ function MilestonesPage() {
                               {mi.coachNotes}
                             </div>
                           )}
-                          {mi.state !== "unlocked" && (
+                          {!achieved && (
                             <button
                               onClick={() => unlock(mi.id)}
                               className="mt-3 rounded-lg border border-border px-2.5 py-1 text-[11px] uppercase tracking-wider text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -189,4 +193,15 @@ function formatState(value: string) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function isAchievedMilestoneState(value: string) {
+  return value === "unlocked" || value === "unlocked_progressing";
+}
+
+function formatMilestoneState(value: string) {
+  if (value === "unlocked_progressing") return "Unlocked · progressing";
+  if (value === "test_passed_pending_confirmation") return "Test passed · pending confirmation";
+  if (value === "observation_passed") return "Observation passed";
+  return formatState(value);
 }

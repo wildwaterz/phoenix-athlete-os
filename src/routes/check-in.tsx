@@ -14,6 +14,7 @@ import {
   getUtcTimestamp,
   morningCheckInFieldsForPhase,
   phaseForDate,
+  previousEvening,
   saveEveningCheckIn,
   saveMorningCheckIn,
   skillTestsForDate,
@@ -25,6 +26,7 @@ import {
   type FlexionStatus,
   type GaitQuality,
   type MorningCheckIn,
+  type PhoenixState,
   type PrescribedTask,
   type PrescribedTaskActivationQuality,
   type PrescribedTaskAfterEffect,
@@ -205,6 +207,50 @@ function formatOption(value: string) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function gaitQualityScoreForCheckIn(value: GaitQuality | undefined): number | undefined {
+  if (value === "heavy_limp_needs_support") return 1;
+  if (value === "noticeable_limp") return 2;
+  if (value === "slow_but_controlled") return 3;
+  if (value === "mostly_clean") return 4;
+  if (value === "normal_for_current_phase") return 5;
+  return undefined;
+}
+
+function createContextualEveningCheckIn(
+  s: PhoenixState,
+  date: string,
+  phaseId: EveningCheckIn["phaseId"],
+): EveningCheckIn {
+  const base = createDefaultEveningCheckIn(date, phaseId);
+  const morning = getMorningForDate(s, date);
+  const priorEvening = previousEvening(s, date);
+  const walkingConfidence =
+    priorEvening?.walkingConfidenceAfter ??
+    priorEvening?.walkingConfidence ??
+    morning?.walkingConfidence ??
+    base.walkingConfidence;
+  const gaitQualityAfter =
+    priorEvening?.gaitQualityAfter ??
+    priorEvening?.movementQualityAfter ??
+    gaitQualityScoreForCheckIn(morning?.gaitQuality) ??
+    base.gaitQualityAfter;
+
+  return {
+    ...base,
+    painDuring: morning?.pain ?? priorEvening?.painDuringActivity ?? base.painDuring,
+    painDuringActivity:
+      morning?.pain ?? priorEvening?.painDuringActivity ?? base.painDuringActivity,
+    painAfter: morning?.pain ?? priorEvening?.painAfterActivity ?? base.painAfter,
+    painAfterActivity: morning?.pain ?? priorEvening?.painAfterActivity ?? base.painAfterActivity,
+    walkingConfidence,
+    walkingConfidenceAfter: walkingConfidence,
+    gaitQualityAfter,
+    movementQualityAfter: priorEvening?.movementQualityAfter,
+    quadActivationQuality: priorEvening?.quadActivationQuality ?? base.quadActivationQuality,
+    energyFatigue: priorEvening?.energyFatigue,
+  };
 }
 
 function FieldSlot({
@@ -626,8 +672,12 @@ function renderEveningField(
       );
     case "notes":
       return (
-        <FieldSlot field={field} label="Evening notes" wide>
-          <TextArea value={e.notes} onChange={(ev) => updateEvening({ notes: ev.target.value })} />
+        <FieldSlot field={field} label="Evening notes / concerns" wide>
+          <TextArea
+            value={e.notes}
+            onChange={(ev) => updateEvening({ notes: ev.target.value })}
+            placeholder="Only add what the structured fields did not capture: sharp pain, instability, unusual symptoms, milestone observations, or context for tomorrow's plan."
+          />
         </FieldSlot>
       );
     default:
@@ -978,8 +1028,12 @@ function PrescribedTaskResponseSection({
               )}
 
               {completion.status !== "not_started" && (
-                <div className="mt-3">
+                <details className="mt-3" open={Boolean(completion.notes)}>
+                  <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+                    {completion.notes ? "Edit task note" : "Add task note"}
+                  </summary>
                   <TextArea
+                    className="mt-2"
                     value={completion.notes ?? ""}
                     onChange={(event) => updateTask(task, { notes: event.target.value })}
                     placeholder={
@@ -988,7 +1042,7 @@ function PrescribedTaskResponseSection({
                         : "What should tomorrow's plan know?"
                     }
                   />
-                </div>
+                </details>
               )}
             </div>
           );
@@ -1341,13 +1395,17 @@ function SkillTestResponseSection({
                   </SelectInput>
                 </Field>
               </div>
-              <div className="mt-3">
+              <details className="mt-3" open={Boolean(result.notes)}>
+                <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+                  {result.notes ? "Edit skill test note" : "Add skill test note"}
+                </summary>
                 <TextArea
+                  className="mt-2"
                   value={result.notes ?? ""}
                   onChange={(event) => updateTest(test, { notes: event.target.value })}
                   placeholder="Was there lag, guarding, irritation, or worse walking afterward?"
                 />
-              </div>
+              </details>
             </div>
           );
         })}
@@ -1370,10 +1428,15 @@ function CheckInPage() {
   const morningFieldIds = morningCheckInFieldsForPhase(phase);
   const eveningFieldIds = eveningCheckInFieldsForPhase(phase);
   const m = savedMorning ?? createDefaultMorningCheckIn(selectedDate, phase.id);
-  const e = savedEvening ?? createDefaultEveningCheckIn(selectedDate, phase.id);
+  const e = savedEvening ?? createContextualEveningCheckIn(s, selectedDate, phase.id);
   const prescribedTasks = dailyQuestsForDate(s, selectedDate)
     .flatMap((quest) => quest.prescribedTasks ?? [])
-    .filter((task) => task.category !== "check_in_morning" && task.category !== "check_in_evening");
+    .filter(
+      (task) =>
+        task.category !== "check_in_morning" &&
+        task.category !== "check_in_evening" &&
+        task.category !== "sleep",
+    );
   const skillTests = skillTestsForDate(s, selectedDate);
   const hasMorning = Boolean(savedMorning);
   const hasEvening = Boolean(savedEvening);

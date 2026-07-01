@@ -1059,7 +1059,6 @@ export const PHASE_CONFIGS: Phase[] = [
       "notes",
     ],
     eveningCheckInFields: [
-      "exercises-completed",
       "pain-during",
       "pain-after",
       "swelling-change",
@@ -1067,7 +1066,6 @@ export const PHASE_CONFIGS: Phase[] = [
       "quad-activation-quality",
       "extension-response",
       "flexion-response",
-      "concerning-symptoms",
       "notes",
     ],
     questTemplateIds: [
@@ -1078,7 +1076,6 @@ export const PHASE_CONFIGS: Phase[] = [
       "swelling-control",
       "protein-target",
       "hydration",
-      "sleep-window",
       "evening-check-in",
     ],
     questTemplateDefaults: [
@@ -1137,13 +1134,6 @@ export const PHASE_CONFIGS: Phase[] = [
         kind: "side",
         xp: 5,
         reason: "Because hydration supports recovery",
-      },
-      {
-        id: "sleep-window",
-        label: "Sleep window",
-        kind: "side",
-        xp: 5,
-        reason: "Because sleep supports symptom settling",
       },
     ],
     readinessRuleIds: ["early-post-op-modify", "activity-response-recover"],
@@ -1209,7 +1199,6 @@ export const PHASE_CONFIGS: Phase[] = [
       "notes",
     ],
     eveningCheckInFields: [
-      "exercises-completed",
       "pain-during",
       "pain-after",
       "swelling-change",
@@ -1217,8 +1206,6 @@ export const PHASE_CONFIGS: Phase[] = [
       "quad-activation-quality",
       "extension-response",
       "flexion-response",
-      "concerning-symptoms",
-      "milestones",
       "notes",
     ],
     questTemplateIds: [
@@ -1229,7 +1216,6 @@ export const PHASE_CONFIGS: Phase[] = [
       "supported-walking",
       "protein-target",
       "hydration",
-      "sleep-window",
       "evening-check-in",
     ],
     questTemplateDefaults: [
@@ -1288,13 +1274,6 @@ export const PHASE_CONFIGS: Phase[] = [
         kind: "side",
         xp: 5,
         reason: "Because hydration supports recovery",
-      },
-      {
-        id: "sleep-window",
-        label: "Sleep window",
-        kind: "side",
-        xp: 5,
-        reason: "Because sleep supports tomorrow's response",
       },
     ],
     readinessRuleIds: [
@@ -1383,7 +1362,6 @@ export const PHASE_CONFIGS: Phase[] = [
       "notes",
     ],
     eveningCheckInFields: [
-      "exercises-completed",
       "pain-during",
       "pain-after",
       "swelling-change",
@@ -1431,7 +1409,6 @@ export const PHASE_CONFIGS: Phase[] = [
     supportingMetrics: ["movement-quality"],
     morningCheckInFields: ["pain", "swelling", "training-readiness", "sleep-hours", "notes"],
     eveningCheckInFields: [
-      "exercises-completed",
       "pain-during",
       "pain-after",
       "swelling-change",
@@ -1478,7 +1455,6 @@ export const PHASE_CONFIGS: Phase[] = [
     supportingMetrics: ["movement-quality", "training-readiness"],
     morningCheckInFields: ["pain", "swelling", "sport-confidence", "training-readiness", "notes"],
     eveningCheckInFields: [
-      "exercises-completed",
       "pain-during",
       "pain-after",
       "swelling-change",
@@ -4573,20 +4549,6 @@ function addMorningSignalQuests(
       ),
     );
   }
-
-  if (morning.sleepHours < 7) {
-    addQuest(
-      quests,
-      quest(
-        "sleep-window",
-        "Sleep window",
-        "side",
-        5,
-        "morning-check-in",
-        "Because last night's sleep was short",
-      ),
-    );
-  }
 }
 
 function addPreviousEveningQuests(quests: QuestDraft[], previous: EveningCheckIn | null) {
@@ -4706,17 +4668,6 @@ function addBaselineQuests(quests: QuestDraft[], isoDate: string, morning: Morni
   addQuest(
     quests,
     quest("hydration", "Hydration", "side", 5, "baseline", "Because hydration supports recovery"),
-  );
-  addQuest(
-    quests,
-    quest(
-      "sleep-window",
-      "Sleep window",
-      "side",
-      5,
-      "baseline",
-      "Because sleep supports tomorrow's response",
-    ),
   );
 }
 
